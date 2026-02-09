@@ -34,6 +34,7 @@ import { startBinanceTradeStream } from './data/binanceWs.js';
 import { applyGlobalProxyFromEnv } from './net/proxy.js';
 import { getAllAiAnalyses, isAiEnabled, forceNextRefresh, setActiveProvider, getActiveProviderId, getProviderInfo, getModelStats } from './engines/aiAnalysis.js';
 import { initPaperTrader, processTick as paperTick, resetPaperTrader, toggleMartingale, getLearningsForAi } from './engines/paperTrader.js';
+import { initRealTrader, processRealTick, confirmRealSession, killSwitch, getRealTraderEnabled, getRealState } from './engines/realTrader.js';
 import { getSessionSecret, hasAnyUsers, createUser, authenticateUser } from './auth.js';
 
 /* ── Setup ────────────────────────────────────────────── */
@@ -295,6 +296,7 @@ const dumpedMarkets = new Set();
 
 async function main() {
   initPaperTrader();
+  initRealTrader();
 
   const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
@@ -340,6 +342,18 @@ async function main() {
       console.log(`  [paper] martingale toggle by ${socket.id}`);
       const ps = toggleMartingale();
       io.emit('paperUpdate', ps);
+    });
+    // ── Real Trader Controls ──
+    socket.on('confirmRealSession', () => {
+      console.log(`  [real] session confirm requested by ${socket.id}`);
+      const result = confirmRealSession();
+      io.emit('realUpdate', getRealState());
+      socket.emit('realConfirmResult', result);
+    });
+    socket.on('killSwitch', async () => {
+      console.log(`  [real] KILL SWITCH by ${socket.id}`);
+      const rs = await killSwitch();
+      io.emit('realUpdate', rs);
     });
     socket.on('disconnect', () => console.log(`  [ws] client disconnected: ${socket.id}`));
   });
@@ -579,7 +593,8 @@ async function main() {
           ),
         },
 
-        paper: null // filled below
+        paper: null, // filled below
+        real: null,  // filled below
       };
 
       // ── Paper Trader (runs after full data is assembled) ──
@@ -608,6 +623,21 @@ async function main() {
           ptbDelta, priceToBeat,
         }
       });
+
+      // ── Real Trader (runs alongside paper trader) ──
+      if (getRealTraderEnabled()) {
+        data.real = await processRealTick({
+          ai: data.ai,
+          poly: { ok: poly.ok, slug: marketSlug, upPrice: marketUp, downPrice: marketDown },
+          tokens: poly.ok ? poly.tokens : {},
+          timeLeft: timeLeftMin,
+          priceToBeat,
+          ptbDelta,
+          rec,
+        });
+      } else {
+        data.real = getRealState();
+      }
 
       // Attach model stats for the models page
       data.modelStats = getModelStats();
@@ -654,6 +684,8 @@ server.listen(PORT, () => {
     console.log(`  ║    ${line.padEnd(32)}║`);
   }
   console.log('  ║  Paper Trader: ON ($100 initial)     ║');
+  const realStatus = getRealTraderEnabled() ? 'ON (needs confirm)' : 'OFF';
+  console.log(`  ║  Real Trading: ${realStatus.padEnd(21)}║`);
   console.log('  ║  Background Agent: ACTIVE            ║');
   console.log(`  ║  Auth: ${authStatus.padEnd(29)}║`);
   console.log('  ╚══════════════════════════════════════╝');

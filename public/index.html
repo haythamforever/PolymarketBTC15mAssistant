@@ -38,7 +38,7 @@
       -webkit-font-smoothing: antialiased;
       overflow: hidden;
     }
-    body { display: grid; grid-template-rows: auto auto auto 1fr auto auto; }
+    body { display: grid; grid-template-rows: auto auto auto 1fr auto auto auto; }
     .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
 
     /* ═══════════ HEADER ═══════════ */
@@ -247,6 +247,25 @@
 
     .paper-ctrl-btn { background: none; border: 1px solid var(--border); border-radius: 3px; color: var(--text-dim); cursor: pointer; padding: 0px 4px; font-size: 7px; font-family: 'Inter', sans-serif; font-weight: 600; transition: all 0.2s; text-transform: uppercase; letter-spacing: 0.5px; }
     .paper-ctrl-btn:hover { border-color: var(--red); color: var(--red); }
+
+    /* ═══════════ REAL TRADING STRIP ═══════════ */
+    .real-strip {
+      display: grid; grid-template-columns: 200px 1fr 140px;
+      gap: 1px; background: var(--border); border-top: 2px solid var(--red);
+    }
+    .real-strip .paper-cell { background: var(--bg-card); }
+    .real-status-badge { display: inline-block; font-size: 8px; font-weight: 800; padding: 2px 8px; border-radius: 4px; text-transform: uppercase; letter-spacing: 1px; }
+    .real-status-badge.disabled { background: var(--bg); color: var(--text-mute); border: 1px solid var(--border); }
+    .real-status-badge.awaiting { background: var(--amber-bg); color: var(--amber); border: 1px solid rgba(217,119,6,0.3); }
+    .real-status-badge.active { background: var(--green-bg); color: var(--green); border: 1px solid rgba(13,159,110,0.3); animation: pulseGreen 2s infinite; }
+    .real-status-badge.halted { background: var(--red-bg); color: var(--red); border: 1px solid rgba(220,44,66,0.3); }
+    .real-confirm-btn { display: block; width: 100%; padding: 5px; border-radius: 5px; font-size: 9px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; text-align: center; border: 2px solid var(--green); background: var(--green-bg); color: var(--green); transition: all 0.2s; margin-top: 4px; }
+    .real-confirm-btn:hover { background: var(--green); color: #fff; }
+    .real-kill-btn { display: block; width: 100%; padding: 6px; border-radius: 5px; font-size: 10px; font-weight: 800; cursor: pointer; text-transform: uppercase; letter-spacing: 1px; text-align: center; border: 2px solid var(--red); background: var(--red-bg); color: var(--red); transition: all 0.2s; }
+    .real-kill-btn:hover { background: var(--red); color: #fff; }
+    .real-stat-row { display: flex; justify-content: space-between; font-size: 8px; padding: 1px 0; color: var(--text-dim); }
+    .real-stat-row .val { font-family: 'JetBrains Mono', monospace; color: var(--text); font-weight: 600; }
+    .real-pnl { font-family: 'JetBrains Mono', monospace; font-size: 14px; font-weight: 800; text-align: center; margin: 2px 0; }
 
     /* ═══════════ RECOMMENDATION FOOTER ═══════════ */
     .rec-footer { display: flex; align-items: center; justify-content: center; gap: 16px; padding: 5px 16px; border-top: 2px solid var(--border); background: var(--bg-card2); transition: all 0.4s ease; }
@@ -463,6 +482,46 @@
     </div>
   </section>
 
+  <!-- REAL TRADING STRIP -->
+  <section class="real-strip" id="realSection">
+    <div class="paper-cell">
+      <div class="paper-cell-title"><span>Real Trading</span><span class="real-status-badge disabled" id="realStatusBadge">DISABLED</span></div>
+      <div id="realStatusArea">
+        <div style="text-align:center;padding:4px 0;">
+          <div class="real-pnl" id="realPnl" style="color:var(--text-dim)">$0.00</div>
+          <div class="real-stat-row"><span>Trades</span><span class="val" id="realTrades">0</span></div>
+          <div class="real-stat-row"><span>W / L</span><span class="val" id="realWL">0 / 0</span></div>
+          <div class="real-stat-row"><span>Win Rate</span><span class="val" id="realWinRate">--</span></div>
+          <div class="real-stat-row"><span>Min Conf</span><span class="val" id="realMinConf">80%</span></div>
+        </div>
+      </div>
+      <button class="real-confirm-btn" id="realConfirmBtn" style="display:none">Confirm Real Trading</button>
+    </div>
+    <div class="paper-cell">
+      <div class="paper-cell-title">Real Position</div>
+      <div id="realPosArea">
+        <div class="paper-no-pos" id="realNoPos">Real trading disabled</div>
+        <div id="realActivePos" style="display:none">
+          <div class="paper-pos-active" id="realPosBox"><div class="paper-pos-side" id="realPosSide">--</div></div>
+          <div class="paper-pos-detail">
+            <span>Entry</span><span class="val" id="realPosEntry">--</span>
+            <span>Shares</span><span class="val" id="realPosShares">--</span>
+            <span>Cost</span><span class="val" id="realPosCost">--</span>
+            <span>AI Conf</span><span class="val" id="realPosConf">--</span>
+          </div>
+        </div>
+      </div>
+      <div style="margin-top:4px;">
+        <div class="real-stat-row"><span>Max Position</span><span class="val" id="realMaxPos">$5.00</span></div>
+        <div class="real-stat-row"><span>Daily Loss Left</span><span class="val" id="realDailyLeft">$10.00</span></div>
+      </div>
+    </div>
+    <div class="paper-cell" style="display:flex;flex-direction:column;justify-content:center;gap:6px;">
+      <button class="real-kill-btn" id="realKillBtn">KILL SWITCH</button>
+      <div style="font-size:7px;text-align:center;color:var(--text-mute);">Cancels all orders &amp; halts trading</div>
+    </div>
+  </section>
+
   <footer class="rec-footer" id="recFooter">
     <div class="rec-signal none" id="recSignal">CONNECTING...</div>
     <div class="rec-meta">
@@ -613,7 +672,62 @@
     $('mgToggleBtn').addEventListener('click', () => socket.emit('toggleMartingale'));
     socket.on('paperUpdate', (ps) => { if (ps) updatePaper(ps); });
     socket.on('init', (data) => initChart(data.klines, data.vwapSeries));
-    socket.on('tick', (data) => { if (!chartReady && data.lastCandle) initChart([data.lastCandle], data.lastVwap ? [data.lastVwap] : []); updateUI(data); });
+    socket.on('tick', (data) => { if (!chartReady && data.lastCandle) initChart([data.lastCandle], data.lastVwap ? [data.lastVwap] : []); updateUI(data); if (data.real) updateReal(data.real); });
+
+    /* Real Trading */
+    function updateReal(r) {
+      if (!r) return;
+      const badge = $('realStatusBadge');
+      const st = r.status || 'DISABLED';
+      badge.textContent = st;
+      badge.className = 'real-status-badge ' + (st === 'ACTIVE' ? 'active' : st === 'HALTED' ? 'halted' : st === 'AWAITING_CONFIRM' ? 'awaiting' : 'disabled');
+
+      // Stats
+      const stats = r.stats || {};
+      $('realPnl').textContent = (stats.totalPnl >= 0 ? '+' : '') + '$' + (stats.totalPnl || 0).toFixed(2);
+      $('realPnl').style.color = stats.totalPnl > 0 ? 'var(--green)' : stats.totalPnl < 0 ? 'var(--red)' : 'var(--text-dim)';
+      $('realTrades').textContent = stats.totalTrades || 0;
+      $('realWL').textContent = (stats.wins || 0) + ' / ' + (stats.losses || 0);
+      $('realWinRate').textContent = stats.winRate != null ? (stats.winRate * 100).toFixed(0) + '%' : '--';
+      $('realMinConf').textContent = (r.minConfidence || 80) + '%';
+      $('realMaxPos').textContent = '$' + (r.maxPositionUsd || 5).toFixed(2);
+      $('realDailyLeft').textContent = '$' + (r.dailyLossRemaining || 0).toFixed(2);
+      $('realDailyLeft').style.color = (r.dailyLossRemaining || 0) < 2 ? 'var(--red)' : 'var(--text)';
+
+      // Confirm button
+      const confirmBtn = $('realConfirmBtn');
+      if (st === 'AWAITING_CONFIRM') { confirmBtn.style.display = ''; } else { confirmBtn.style.display = 'none'; }
+
+      // Position
+      if (r.currentOrder) {
+        $('realNoPos').style.display = 'none'; $('realActivePos').style.display = '';
+        $('realPosSide').textContent = r.currentOrder.side;
+        $('realPosBox').className = 'paper-pos-active ' + (r.currentOrder.side === 'UP' ? 'up' : 'down');
+        $('realPosEntry').textContent = (r.currentOrder.entryPrice * 100).toFixed(0) + '\u00a2';
+        $('realPosShares').textContent = r.currentOrder.shares;
+        $('realPosCost').textContent = '$' + r.currentOrder.cost.toFixed(2);
+        $('realPosConf').textContent = (r.currentOrder.aiConfidence || '--') + '%';
+      } else {
+        $('realActivePos').style.display = 'none'; $('realNoPos').style.display = '';
+        if (st === 'DISABLED') $('realNoPos').textContent = 'Real trading disabled';
+        else if (st === 'AWAITING_CONFIRM') $('realNoPos').textContent = 'Awaiting session confirmation...';
+        else if (st === 'HALTED') $('realNoPos').innerHTML = '<span style="color:var(--red);font-weight:700">HALTED</span> — ' + (r.haltReason || 'manual');
+        else $('realNoPos').textContent = 'Waiting for high-confidence signal...';
+      }
+    }
+
+    $('realConfirmBtn').addEventListener('click', () => {
+      if (confirm('CONFIRM REAL TRADING\\n\\nThis will use REAL MONEY on Polymarket.\\nMax position: $' + ($('realMaxPos').textContent || '5.00') + '\\nMax daily loss: $' + ($('realDailyLeft').textContent || '10.00') + '\\n\\nAre you sure?')) {
+        socket.emit('confirmRealSession');
+      }
+    });
+    $('realKillBtn').addEventListener('click', () => {
+      if (confirm('KILL SWITCH\\n\\nThis will:\\n- Cancel ALL open orders\\n- Halt all real trading\\n\\nProceed?')) {
+        socket.emit('killSwitch');
+      }
+    });
+    socket.on('realUpdate', (rs) => { if (rs) updateReal(rs); });
+    socket.on('realConfirmResult', (r) => { if (r && !r.ok) alert('Could not confirm: ' + (r.error || 'unknown error')); });
   })();
   </script>
 </body>

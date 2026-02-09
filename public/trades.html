@@ -108,9 +108,17 @@
     <!-- MODEL COMPARISON -->
     <div id="modelSection" class="grid-2" style="display:none"></div>
 
-    <!-- TRADE HISTORY -->
+    <!-- REAL TRADE HISTORY -->
+    <div class="card" style="margin-bottom:16px;border-left:3px solid var(--red)">
+      <div class="card-title"><span>Real Trades</span><span class="badge dim" id="realTradeCountBadge">0 trades</span><span class="badge dim" id="realTradePnlBadge" style="margin-left:4px">$0.00</span></div>
+      <div id="realTradeTableWrap">
+        <div class="empty-state">No real trades yet. Enable real trading from the dashboard to start.</div>
+      </div>
+    </div>
+
+    <!-- PAPER TRADE HISTORY -->
     <div class="card" style="margin-bottom:16px">
-      <div class="card-title"><span>Trade History</span><span class="badge dim" id="tradeCountBadge">0 trades</span></div>
+      <div class="card-title"><span>Paper Trade History</span><span class="badge dim" id="tradeCountBadge">0 trades</span></div>
       <div id="tradeTableWrap">
         <div class="empty-state">No trades yet. The agent will start trading once it has enough data and confidence.</div>
       </div>
@@ -237,10 +245,44 @@
       if (mistakes.length > 0) { mistakes.forEach(function(m) { var div = document.createElement('div'); div.className = 'mistake'; div.innerHTML = '<div class="summary">' + m.summary + '</div>' + (m.wrongIndicators && m.wrongIndicators.length > 0 ? '<div class="wrong">Wrong: ' + m.wrongIndicators.join(', ') + '</div>' : ''); mistEl.appendChild(div); }); } else { mistEl.innerHTML = '<div class="empty-state">No mistakes to review</div>'; }
     }
 
+    function renderRealTrades(r) {
+      if (!r) return;
+      var trades = r.recentTrades || [];
+      var stats = r.stats || {};
+      document.getElementById('realTradeCountBadge').textContent = (stats.totalTrades || 0) + ' trades';
+      var pnlBadge = document.getElementById('realTradePnlBadge');
+      var pnl = stats.totalPnl || 0;
+      pnlBadge.textContent = (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2);
+      pnlBadge.className = 'badge ' + (pnl > 0 ? 'green' : pnl < 0 ? 'red' : 'dim');
+      if (trades.length === 0) return;
+      var wrap = document.getElementById('realTradeTableWrap');
+      var html = '<table class="trade-table"><thead><tr><th>Side</th><th>Outcome</th><th>P&L</th><th>Conf</th><th>Cost</th><th>Shares</th><th>Entry</th><th>Settled</th></tr></thead><tbody>';
+      trades.forEach(function(t) {
+        var sideClass = t.side === 'UP' ? 't-up' : 't-down';
+        var outcomeClass = t.outcome === 'WIN' ? 't-win' : t.outcome === 'LOSS' ? 't-loss' : 't-unk';
+        var pnlClass = t.pnl >= 0 ? 't-up' : 't-down';
+        var settled = t.settledAt ? new Date(t.settledAt).toLocaleTimeString() : '--';
+        html += '<tr>';
+        html += '<td class="' + sideClass + ' mono" style="font-weight:700">' + t.side + '</td>';
+        html += '<td class="' + outcomeClass + ' mono" style="font-weight:700">' + (t.outcome || '--') + '</td>';
+        html += '<td class="' + pnlClass + ' mono">' + (t.pnl >= 0 ? '+' : '') + '$' + (t.pnl || 0).toFixed(2) + '</td>';
+        html += '<td class="mono">' + (t.aiConfidence || '--') + '%</td>';
+        html += '<td class="mono">$' + (t.cost || 0).toFixed(2) + '</td>';
+        html += '<td class="mono">' + (t.shares || '--') + '</td>';
+        html += '<td class="mono">' + (t.entryPrice ? (t.entryPrice * 100).toFixed(0) + '\u00a2' : '--') + '</td>';
+        html += '<td style="font-size:10px;color:var(--text-mute)">' + settled + '</td>';
+        html += '</tr>';
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
     socket.on('tick', function(data) {
       if (data.paper) { renderTrades(data.paper); if (data.paper.learnings) renderLearning(data.paper.learnings); }
+      if (data.real) renderRealTrades(data.real);
     });
     socket.on('paperUpdate', function(ps) { if (ps) { renderTrades(ps); if (ps.learnings) renderLearning(ps.learnings); } });
+    socket.on('realUpdate', function(rs) { if (rs) renderRealTrades(rs); });
   })();
   </script>
 </body>
