@@ -249,6 +249,13 @@ export async function processRealTick(data) {
     fetchWalletBalance().catch(() => {});
   }
 
+  // ── Auto-clean phantom orders (no orderId = never actually placed) ──
+  if (state.currentOrder && !state.currentOrder.orderId) {
+    console.log(`  [real] clearing phantom order (no orderId) — order was never actually placed`);
+    state.currentOrder = null;
+    saveState();
+  }
+
   const { ai, poly, timeLeft, priceToBeat, ptbDelta, rec } = data;
   const marketSlug = poly?.slug || '';
 

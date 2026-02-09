@@ -69,8 +69,19 @@ export async function initClobClient() {
 
     // Step 1: Create temp client to derive API creds (L1 auth)
     const tempClient = new ClobClient(CLOB_HOST, CHAIN_ID, signer);
-    apiCreds = await tempClient.createOrDeriveApiKey();
-    console.log(`  [clob] API credentials derived successfully`);
+    try {
+      apiCreds = await tempClient.createOrDeriveApiKey();
+    } catch (apiErr) {
+      initError = `API key derivation failed: ${apiErr?.message || apiErr}`;
+      console.error(`  [clob] ${initError}`);
+      return false;
+    }
+    if (!apiCreds || !apiCreds.key) {
+      initError = 'API key derivation returned empty credentials — has this wallet been used on polymarket.com?';
+      console.error(`  [clob] ${initError}`);
+      return false;
+    }
+    console.log(`  [clob] API credentials derived (key: ${apiCreds.key.slice(0, 8)}...)`);
 
     // Step 2: Create full trading client with L2 auth
     const funder = FUNDER_ADDRESS || signerAddress;
@@ -183,6 +194,15 @@ export async function placeBuyOrder(tokenId, price, size, opts = {}) {
     entry.orderId = orderId;
     entry.response = response;
     logOrder(entry);
+
+    // Validate we actually got an order ID back — null means the API rejected it
+    if (!orderId) {
+      const errMsg = response?.error || response?.message || 'Order rejected — no orderID returned';
+      entry.error = errMsg;
+      logOrder(entry);
+      console.error(`  [REAL TRADE] order REJECTED: ${errMsg}`);
+      return { ok: false, error: errMsg, response };
+    }
 
     console.log(`  [REAL TRADE] order placed: ${orderId}`);
     return { ok: true, orderId, response };
