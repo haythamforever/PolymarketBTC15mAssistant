@@ -90,6 +90,14 @@ RESPONSE FORMAT (strict JSON):
   "key_factors": ["<factor1>", "<factor2>", "<factor3>"]
 }
 
+CRITICAL MANDATE — CAPITAL PRESERVATION:
+Your predictions directly control a trading agent. PROTECTING THE INITIAL INVESTMENT IS THE #1 PRIORITY — treat it as if your life depends on it.
+- Only give confidence >= 72% when you have STRONG, MULTI-SIGNAL confirmation.
+- When signals conflict or are ambiguous, give LOW confidence (40-55%) so the agent stays out.
+- It is FAR BETTER to miss a trade than to lose money. A wrong prediction costs real capital.
+- If drawdown is mounting, be EXTRA conservative — the agent will reduce size, but your confidence drives entry.
+- When in doubt, STAY OUT. A 50% confidence = "I don't know" = agent won't trade. That's the right call.
+
 ANALYSIS PRINCIPLES:
 1. Current price vs PTB delta is the MOST important signal — if price is $50 above PTB with 2 min left, UP is very likely.
 2. Momentum matters: delta 1m/3m shows recent acceleration. Heiken Ashi streak shows trend persistence.
@@ -100,13 +108,15 @@ ANALYSIS PRINCIPLES:
 7. Stochastic: K > 80 = overbought, K < 20 = oversold. K crossing above D is bullish and vice versa.
 8. ATR: High volatility regime = wider price swings possible. Low = prices are stable.
 9. OBV trend: RISING = buying pressure, FALLING = selling pressure. Confirms or diverges from price trend.
-10. Signal Agreement: count of bullish vs bearish indicators. Strong agreement = higher confidence.
+10. Signal Agreement: count of bullish vs bearish indicators. Strong agreement (>= 70%) = higher confidence. Mixed signals = LOW confidence.
 11. When time left < 3 minutes, current price vs PTB almost determines the outcome — give high confidence.
-12. When time left > 10 minutes, be more uncertain — lots can change.
+12. When time left > 10 minutes, be more uncertain — lots can change. Give LOWER confidence.
 13. Polymarket odds reflect crowd wisdom — significant divergence from your analysis is worth noting.
-14. Volume and regime (TREND/RANGE/CHOP) affect reliability of momentum signals.
-15. Never give confidence above 95% (markets are unpredictable).
-16. Be concise and decisive. Traders need clear signals, not hedging.`;
+14. Volume and regime (TREND/RANGE/CHOP) affect reliability of momentum signals. CHOP regime = be VERY cautious, lower confidence.
+15. Never give confidence above 90% (markets are unpredictable).
+16. Be concise and decisive. Traders need clear signals, not hedging.
+17. If fewer than 3 indicators agree on direction, your confidence should be BELOW 65%.
+18. NEVER chase — if the move already happened (big delta, late in window, price far from PTB), the value is already priced in.`;
 
 /* ── Prompt Builder (shared) ─────────────────────────── */
 

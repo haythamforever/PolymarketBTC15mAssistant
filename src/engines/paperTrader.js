@@ -10,16 +10,17 @@ const MAX_JOURNAL = 200;   // keep last N trades in journal
 
 const DEFAULT_CONFIG = {
   initialBalance: 100,
-  positionSizePct: 0.10,
-  minAiConfidence: 65,
+  positionSizePct: 0.03,       // 3% max risk per trade — protect capital
+  minAiConfidence: 72,          // higher bar to enter — only high-conviction trades
   minEntryTimeLeft: 2,
   maxEntryTimeLeft: 13,
   learningWindow: 20,
+  maxDrawdownHalt: 0.15,        // STOP trading if 15% of initial capital is lost
   martingale: {
     enabled: false,
-    multiplier: 2.0,
-    maxLevel: 4,
-    maxPositionPct: 0.50,
+    multiplier: 1.5,            // gentler martingale (was 2x)
+    maxLevel: 3,                // max 3 levels (was 4)
+    maxPositionPct: 0.10,       // hard cap 10% of balance (was 50%)
   },
 };
 
@@ -624,9 +625,14 @@ function adjustLearning() {
   const winRate = wins / recent.length;
   const old = state.config.minAiConfidence;
 
-  if (winRate < 0.35) state.config.minAiConfidence = Math.min(92, old + 5);
-  else if (winRate < 0.45) state.config.minAiConfidence = Math.min(90, old + 2);
-  else if (winRate > 0.65) state.config.minAiConfidence = Math.max(55, old - 2);
+  // More aggressive tightening when losing — capital preservation first
+  if (winRate < 0.30) state.config.minAiConfidence = Math.min(92, old + 8);
+  else if (winRate < 0.40) state.config.minAiConfidence = Math.min(90, old + 5);
+  else if (winRate < 0.50) state.config.minAiConfidence = Math.min(88, old + 3);
+  else if (winRate > 0.65) state.config.minAiConfidence = Math.max(65, old - 2);
+
+  // Never drop below initial minimum
+  state.config.minAiConfidence = Math.max(state.config.minAiConfidence, 65);
 
   if (state.config.minAiConfidence !== old) {
     console.log(`  [paper] ADAPT: winRate ${(winRate * 100).toFixed(0)}% → confidence ${old}→${state.config.minAiConfidence}`);
@@ -684,14 +690,26 @@ export function processTick(data) {
     }
   }
 
+  // ── Capital Protection: halt trading if drawdown exceeds threshold ──
+  const drawdownPct = (state.config.initialBalance - state.balance) / state.config.initialBalance;
+  const haltThreshold = state.config.maxDrawdownHalt || 0.15;
+  const capitalProtected = drawdownPct >= haltThreshold;
+
   // ── Entry ──
   if (
-    !state.currentTrade && state.balance > 0.5 &&
+    !state.currentTrade && state.balance > 0.5 && !capitalProtected &&
     ai?.enabled && ai?.analysis && poly?.ok && marketSlug && marketSlug !== state.lastSettledSlug
   ) {
     const analysis = ai.analysis;
     const confidence = analysis.confidence || 0;
     const direction = analysis.direction;
+
+    // Scale position down if losing — protect remaining capital
+    let dynamicSizePct = state.config.positionSizePct;
+    if (drawdownPct > 0.05) {
+      // Reduce position size proportionally when in drawdown
+      dynamicSizePct = Math.max(0.01, state.config.positionSizePct * (1 - drawdownPct));
+    }
 
     if (
       (direction === 'UP' || direction === 'DOWN') &&
@@ -701,6 +719,10 @@ export function processTick(data) {
     ) {
       const price = direction === 'UP' ? poly.upPrice : poly.downPrice;
       if (price > 0 && price < 1) {
+        // Temporarily override position size with dynamic risk-adjusted size
+        const origSize = state.config.positionSizePct;
+        state.config.positionSizePct = dynamicSizePct;
+
         enterTrade(direction, price, {
           marketSlug,
           aiDirection: direction,
@@ -713,7 +735,15 @@ export function processTick(data) {
           snapshot: snapshot ?? null,
           allPredictions,
         });
+
+        state.config.positionSizePct = origSize; // restore
       }
+    }
+  } else if (capitalProtected && !state.currentTrade) {
+    // Log capital protection halt (once per cycle, throttle with timestamp)
+    if (!state._lastHaltLog || Date.now() - state._lastHaltLog > 60000) {
+      console.log(`  [paper] CAPITAL PROTECTION: Trading halted — drawdown ${(drawdownPct * 100).toFixed(1)}% exceeds ${(haltThreshold * 100).toFixed(0)}% limit. Protecting remaining $${state.balance.toFixed(2)}`);
+      state._lastHaltLog = Date.now();
     }
   }
 
@@ -727,11 +757,20 @@ function getPublicState() {
   const wc = state.stats.wins, lc = state.stats.losses;
   const winRate = (wc + lc) > 0 ? wc / (wc + lc) : null;
 
+  const dd = (state.config.initialBalance - state.balance) / state.config.initialBalance;
+  const haltTh = state.config.maxDrawdownHalt || 0.15;
+
   return {
     balance: state.balance,
     initialBalance: state.config.initialBalance,
     totalPnl: state.stats.totalPnl,
     pnlPct: ((state.balance - state.config.initialBalance) / state.config.initialBalance) * 100,
+    capitalProtection: {
+      active: dd >= haltTh,
+      drawdownPct: +(dd * 100).toFixed(1),
+      haltThresholdPct: +(haltTh * 100).toFixed(0),
+      maxRiskPerTrade: +(state.config.positionSizePct * 100).toFixed(1),
+    },
     currentTrade: state.currentTrade ? {
       side: state.currentTrade.side, entryPrice: state.currentTrade.entryPrice,
       shares: state.currentTrade.shares, cost: state.currentTrade.cost,
@@ -766,6 +805,13 @@ function getPublicState() {
 export function getLearningsForAi() {
   if (!learnings || !learnings.ready) return null;
   const lines = [];
+
+  // Capital preservation warning
+  const dd = state ? (state.config.initialBalance - state.balance) / state.config.initialBalance : 0;
+  if (dd > 0.05) {
+    lines.push(`⚠️ CAPITAL ALERT: Portfolio is down ${(dd * 100).toFixed(1)}% from initial $${state.config.initialBalance}. PROTECT REMAINING CAPITAL. Only enter HIGH-CONVICTION trades.`);
+    lines.push(``);
+  }
 
   lines.push(`=== AGENT TRADE HISTORY & LESSONS ===`);
   lines.push(`Total trades: ${learnings.totalAnalyzed} | Win rate: ${learnings.overallWinRate}%`);
