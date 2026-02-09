@@ -13,6 +13,7 @@ import {
   placeBuyOrder,
   cancelAllOrders,
   getOpenOrders,
+  fetchWalletBalance,
 } from '../data/polymarketClob.js';
 
 /* ── Config ──────────────────────────────────────────── */
@@ -243,6 +244,11 @@ export async function processRealTick(data) {
   if (!state) loadState();
   if (!REAL_ENABLED) return getPublicState();
 
+  // Periodically refresh wallet balance (non-blocking)
+  if (isClobReady()) {
+    fetchWalletBalance().catch(() => {});
+  }
+
   const { ai, poly, timeLeft, priceToBeat, ptbDelta, rec } = data;
   const marketSlug = poly?.slug || '';
 
@@ -314,14 +320,18 @@ function getPublicState() {
 
   checkDailyReset();
 
+  const clobStatus = getClobStatus();
   return {
     enabled: REAL_ENABLED,
     clobReady: isClobReady(),
-    clobStatus: getClobStatus(),
+    clobStatus,
+    walletAddress: clobStatus.walletAddress,
+    funderAddress: clobStatus.funderAddress,
+    usdcBalance: clobStatus.usdcBalance,
     sessionConfirmed,
     halted,
     haltReason,
-    status: !REAL_ENABLED ? 'DISABLED' : !sessionConfirmed ? 'AWAITING_CONFIRM' : halted ? 'HALTED' : 'ACTIVE',
+    status: !REAL_ENABLED ? 'DISABLED' : !isClobReady() ? 'CLOB_ERROR' : !sessionConfirmed ? 'AWAITING_CONFIRM' : halted ? 'HALTED' : 'ACTIVE',
     minConfidence: MIN_CONFIDENCE,
     maxPositionUsd: MAX_POS_USD,
     maxDailyLossUsd: MAX_DAILY_LOSS,

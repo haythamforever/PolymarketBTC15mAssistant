@@ -488,11 +488,14 @@
       <div class="paper-cell-title"><span>Real Trading</span><span class="real-status-badge disabled" id="realStatusBadge">DISABLED</span></div>
       <div id="realStatusArea">
         <div style="text-align:center;padding:4px 0;">
+          <div class="real-stat-row" style="margin-bottom:2px"><span>USDC Balance</span><span class="val" id="realUsdcBal" style="font-size:12px;font-weight:800">--</span></div>
+          <div class="real-stat-row" style="margin-bottom:4px"><span>Wallet</span><span class="val" id="realWalletAddr" style="font-size:7px;color:var(--text-mute)">--</span></div>
           <div class="real-pnl" id="realPnl" style="color:var(--text-dim)">$0.00</div>
           <div class="real-stat-row"><span>Trades</span><span class="val" id="realTrades">0</span></div>
           <div class="real-stat-row"><span>W / L</span><span class="val" id="realWL">0 / 0</span></div>
           <div class="real-stat-row"><span>Win Rate</span><span class="val" id="realWinRate">--</span></div>
           <div class="real-stat-row"><span>Min Conf</span><span class="val" id="realMinConf">80%</span></div>
+          <div class="real-stat-row" id="realErrorRow" style="display:none"><span style="color:var(--red)">Error</span><span class="val" id="realError" style="color:var(--red);font-size:7px;max-width:120px;word-break:break-all">--</span></div>
         </div>
       </div>
       <button class="real-confirm-btn" id="realConfirmBtn" style="display:none">Confirm Real Trading</button>
@@ -679,8 +682,25 @@
       if (!r) return;
       const badge = $('realStatusBadge');
       const st = r.status || 'DISABLED';
-      badge.textContent = st;
-      badge.className = 'real-status-badge ' + (st === 'ACTIVE' ? 'active' : st === 'HALTED' ? 'halted' : st === 'AWAITING_CONFIRM' ? 'awaiting' : 'disabled');
+      badge.textContent = st === 'CLOB_ERROR' ? 'ERROR' : st;
+      badge.className = 'real-status-badge ' + (st === 'ACTIVE' ? 'active' : st === 'HALTED' || st === 'CLOB_ERROR' ? 'halted' : st === 'AWAITING_CONFIRM' ? 'awaiting' : 'disabled');
+
+      // Wallet info
+      if (r.usdcBalance != null) {
+        $('realUsdcBal').textContent = '$' + r.usdcBalance.toFixed(2);
+        $('realUsdcBal').style.color = r.usdcBalance > 0 ? 'var(--green)' : 'var(--red)';
+      } else {
+        $('realUsdcBal').textContent = '--';
+        $('realUsdcBal').style.color = 'var(--text-mute)';
+      }
+      var addr = r.funderAddress || r.walletAddress || '--';
+      $('realWalletAddr').textContent = addr !== '--' ? addr.slice(0, 6) + '...' + addr.slice(-4) : '--';
+      $('realWalletAddr').title = addr;
+
+      // CLOB errors
+      var clobErr = r.clobStatus && r.clobStatus.error;
+      if (clobErr) { $('realErrorRow').style.display = ''; $('realError').textContent = clobErr; }
+      else { $('realErrorRow').style.display = 'none'; }
 
       // Stats
       const stats = r.stats || {};
@@ -710,6 +730,7 @@
       } else {
         $('realActivePos').style.display = 'none'; $('realNoPos').style.display = '';
         if (st === 'DISABLED') $('realNoPos').textContent = 'Real trading disabled';
+        else if (st === 'CLOB_ERROR') $('realNoPos').innerHTML = '<span style="color:var(--red);font-weight:700">CLOB ERROR</span><br><small style="color:var(--text-mute)">' + (r.clobStatus?.error || 'Connection failed') + '</small>';
         else if (st === 'AWAITING_CONFIRM') $('realNoPos').textContent = 'Awaiting session confirmation...';
         else if (st === 'HALTED') $('realNoPos').innerHTML = '<span style="color:var(--red);font-weight:700">HALTED</span> — ' + (r.haltReason || 'manual');
         else $('realNoPos').textContent = 'Waiting for high-confidence signal...';

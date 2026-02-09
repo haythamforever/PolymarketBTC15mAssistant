@@ -6,6 +6,9 @@
 
 import { ClobClient, Side, OrderType } from '@polymarket/clob-client';
 import { Wallet } from '@ethersproject/wallet';
+import { JsonRpcProvider } from '@ethersproject/providers';
+import { Contract } from '@ethersproject/contracts';
+import { formatUnits } from '@ethersproject/units';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -18,12 +21,20 @@ const PRIVATE_KEY       = process.env.POLYMARKET_PRIVATE_KEY || '';
 const FUNDER_ADDRESS    = process.env.POLYMARKET_FUNDER_ADDRESS || '';
 const SIGNATURE_TYPE    = Number(process.env.POLYMARKET_SIGNATURE_TYPE ?? 0);
 
+// USDC on Polygon
+const USDC_ADDRESS = '0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174'; // PoS bridged USDC
+const USDC_ABI = ['function balanceOf(address) view returns (uint256)'];
+const POLYGON_RPC = process.env.POLYGON_RPC_URL || 'https://polygon-rpc.com';
+
 /* ── State ───────────────────────────────────────────── */
 
 let client = null;
 let initialized = false;
 let initError = null;
 let apiCreds = null;
+let signerAddress = null;
+let walletBalance = null; // cached USDC balance
+let balanceLastFetched = 0;
 
 /* ── Logging ─────────────────────────────────────────── */
 
@@ -53,7 +64,7 @@ export async function initClobClient() {
 
   try {
     const signer = new Wallet(PRIVATE_KEY);
-    const signerAddress = await signer.getAddress();
+    signerAddress = await signer.getAddress();
     console.log(`  [clob] signer address: ${signerAddress}`);
 
     // Step 1: Create temp client to derive API creds (L1 auth)
@@ -93,7 +104,34 @@ export function getClobStatus() {
     error: initError,
     hasKey: !!PRIVATE_KEY,
     hasFunder: !!FUNDER_ADDRESS,
+    walletAddress: signerAddress,
+    funderAddress: FUNDER_ADDRESS || signerAddress,
+    usdcBalance: walletBalance,
   };
+}
+
+/* ── Wallet Balance ──────────────────────────────────── */
+
+export async function fetchWalletBalance() {
+  // Check the funder address (Polymarket proxy wallet) for USDC
+  const addressToCheck = FUNDER_ADDRESS || signerAddress;
+  if (!addressToCheck) return null;
+
+  // Only refetch every 30s
+  const now = Date.now();
+  if (walletBalance !== null && now - balanceLastFetched < 30_000) return walletBalance;
+
+  try {
+    const provider = new JsonRpcProvider(POLYGON_RPC);
+    const usdc = new Contract(USDC_ADDRESS, USDC_ABI, provider);
+    const raw = await usdc.balanceOf(addressToCheck);
+    walletBalance = parseFloat(formatUnits(raw, 6)); // USDC has 6 decimals
+    balanceLastFetched = now;
+    return walletBalance;
+  } catch (err) {
+    console.error(`  [clob] balance check error: ${err?.message}`);
+    return walletBalance; // return last known
+  }
 }
 
 /* ── Order Placement ─────────────────────────────────── */
