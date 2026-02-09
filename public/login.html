@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Login — Polymarket BTC Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f0f2f5; --bg-card: #ffffff; --border: #e0e3e8;
+      --text: #1a1d23; --text-dim: #5a6070; --text-mute: #9ca3b0;
+      --green: #0d9f6e; --red: #dc2c42; --amber: #d97706;
+      --accent: #f7931a; --accent2: #ff6b00;
+    }
+    html, body {
+      height: 100%; background: var(--bg); color: var(--text);
+      font-family: 'Inter', system-ui, sans-serif; font-size: 14px;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .login-wrap {
+      width: 400px; max-width: 95vw;
+    }
+    .login-card {
+      background: var(--bg-card); border: 1px solid var(--border);
+      border-radius: 16px; padding: 36px 32px; position: relative;
+      box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+    }
+    .logo-row {
+      display: flex; align-items: center; justify-content: center; gap: 12px;
+      margin-bottom: 8px;
+    }
+    .logo {
+      width: 44px; height: 44px; border-radius: 12px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px; font-weight: 800; color: #fff;
+    }
+    .app-name { font-size: 16px; font-weight: 800; letter-spacing: -0.3px; }
+    .subtitle {
+      text-align: center; font-size: 11px; color: var(--text-dim);
+      margin-bottom: 28px; letter-spacing: 0.5px;
+    }
+    h1 {
+      font-size: 20px; font-weight: 800; text-align: center;
+      margin-bottom: 24px; color: var(--text);
+    }
+    .form-group { margin-bottom: 16px; }
+    label {
+      display: block; font-size: 11px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.8px;
+      color: var(--text-dim); margin-bottom: 5px;
+    }
+    input[type="text"], input[type="password"] {
+      width: 100%; padding: 11px 14px; border-radius: 9px;
+      border: 1px solid var(--border); background: var(--bg);
+      color: var(--text); font-size: 14px; font-family: 'JetBrains Mono', monospace;
+      outline: none; transition: border-color 0.2s;
+    }
+    input:focus { border-color: var(--accent); }
+    input::placeholder { color: var(--text-mute); }
+    .btn {
+      width: 100%; padding: 12px; border: none; border-radius: 9px;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      transition: all 0.2s; letter-spacing: 0.5px;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; margin-top: 8px;
+    }
+    .btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .error-msg {
+      text-align: center; font-size: 12px; color: var(--red);
+      margin-top: 14px; min-height: 18px; font-weight: 500;
+    }
+    .info-msg {
+      text-align: center; font-size: 11px; color: var(--text-dim);
+      margin-top: 14px;
+    }
+    .agent-badge {
+      display: flex; align-items: center; justify-content: center; gap: 6px;
+      margin-top: 20px; padding: 8px 12px;
+      background: rgba(13,159,110,0.06); border: 1px solid rgba(13,159,110,0.2);
+      border-radius: 8px; font-size: 10px; color: var(--green);
+      font-weight: 600; letter-spacing: 0.5px;
+    }
+    .agent-dot {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--green); box-shadow: 0 0 6px var(--green);
+      animation: pulse 2s ease-in-out infinite;
+    }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <div class="login-wrap">
+    <div class="login-card">
+      <div class="logo-row">
+        <div class="logo">B</div>
+        <div class="app-name">Polymarket BTC Assistant</div>
+      </div>
+      <div class="subtitle">AI-Powered 15-Minute BTC Prediction & Paper Trading</div>
+
+      <h1 id="pageTitle">Sign In</h1>
+
+      <form id="authForm">
+        <div class="form-group">
+          <label for="username">Username</label>
+          <input type="text" id="username" name="username" placeholder="Enter username" required autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label for="password">Password</label>
+          <input type="password" id="password" name="password" placeholder="Enter password" required autocomplete="current-password">
+        </div>
+        <div class="form-group hidden" id="confirmGroup">
+          <label for="confirm">Confirm Password</label>
+          <input type="password" id="confirm" name="confirm" placeholder="Re-enter password" autocomplete="new-password">
+        </div>
+        <button type="submit" class="btn" id="submitBtn">Sign In</button>
+      </form>
+
+      <div class="error-msg" id="errorMsg"></div>
+      <div class="info-msg hidden" id="setupInfo">
+        First time? Create an admin account to get started.
+      </div>
+
+      <div class="agent-badge">
+        <div class="agent-dot"></div>
+        TRADING AGENT RUNNING IN BACKGROUND
+      </div>
+    </div>
+  </div>
+
+  <script>
+  (function() {
+    'use strict';
+    const $ = (id) => document.getElementById(id);
+    let isSetup = false;
+
+    // Check server status
+    fetch('/api/status')
+      .then(r => r.json())
+      .then(data => {
+        if (data.loggedIn) {
+          window.location.href = '/';
+          return;
+        }
+        if (data.needsSetup) {
+          isSetup = true;
+          $('pageTitle').textContent = 'Create Admin Account';
+          $('confirmGroup').classList.remove('hidden');
+          $('submitBtn').textContent = 'Create Account';
+          $('setupInfo').classList.remove('hidden');
+          $('password').autocomplete = 'new-password';
+        }
+      })
+      .catch(() => {
+        $('errorMsg').textContent = 'Cannot reach server';
+      });
+
+    $('authForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      $('errorMsg').textContent = '';
+      $('submitBtn').disabled = true;
+
+      const username = $('username').value.trim();
+      const password = $('password').value;
+      const confirm  = $('confirm').value;
+
+      if (!username || !password) {
+        $('errorMsg').textContent = 'Username and password are required';
+        $('submitBtn').disabled = false;
+        return;
+      }
+
+      if (isSetup) {
+        if (password.length < 4) {
+          $('errorMsg').textContent = 'Password must be at least 4 characters';
+          $('submitBtn').disabled = false;
+          return;
+        }
+        if (password !== confirm) {
+          $('errorMsg').textContent = 'Passwords do not match';
+          $('submitBtn').disabled = false;
+          return;
+        }
+      }
+
+      try {
+        const endpoint = isSetup ? '/api/setup' : '/api/login';
+        const res = await fetch(endpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, password, confirm }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          window.location.href = '/';
+        } else {
+          $('errorMsg').textContent = data.error || 'Authentication failed';
+        }
+      } catch (err) {
+        $('errorMsg').textContent = 'Network error — is the server running?';
+      }
+
+      $('submitBtn').disabled = false;
+    });
+  })();
+  </script>
+</body>
+</html>

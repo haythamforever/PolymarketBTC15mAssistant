@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI Models — BTC 15m Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f0f2f5; --bg-card: #ffffff; --bg-card2: #f7f8fa; --border: #e0e3e8;
+      --text: #1a1d23; --text-dim: #5a6070; --text-mute: #9ca3b0;
+      --green: #0d9f6e; --green-bg: rgba(13,159,110,0.08);
+      --red: #dc2c42; --red-bg: rgba(220,44,66,0.08);
+      --amber: #d97706; --amber-bg: rgba(217,119,6,0.08);
+      --purple: #7c3aed; --purple-bg: rgba(124,58,237,0.08);
+      --blue: #2563eb; --radius: 12px;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.5; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--bg-card);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .page-header h1 { font-size: 17px; font-weight: 800; }
+    .nav-links { display: flex; gap: 8px; }
+    .nav-link {
+      font-size: 11px; color: var(--purple); text-decoration: none; padding: 5px 14px;
+      border: 1px solid rgba(124,58,237,0.3); border-radius: 6px; font-weight: 600; transition: all 0.2s;
+    }
+    .nav-link:hover { background: var(--purple-bg); border-color: var(--purple); }
+
+    .container { max-width: 1100px; margin: 0 auto; padding: 20px 24px; }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card-title {
+      font-size: 15px; font-weight: 800; margin-bottom: 16px;
+    }
+
+    /* ── Performance Table ── */
+    .perf-table { width: 100%; border-collapse: collapse; }
+    .perf-table th {
+      text-align: left; padding: 8px 12px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-mute);
+      border-bottom: 2px solid var(--border);
+    }
+    .perf-table th.right, .perf-table td.right { text-align: right; }
+    .perf-table td { padding: 10px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); vertical-align: middle; }
+    .perf-table tr:last-child td { border-bottom: none; }
+
+    /* Model badge */
+    .model-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 5px;
+      font-size: 10px; font-weight: 800; color: #fff; letter-spacing: 0.3px;
+    }
+    .model-badge.deepseek { background: #0066ff; }
+    .model-badge.openai { background: #10a37f; }
+    .model-badge.primary { box-shadow: 0 0 0 2px rgba(124,58,237,0.4); }
+
+    .provider-text { font-size: 12px; color: var(--text-dim); }
+    .val-mono { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; }
+    .val-green { color: var(--green); } .val-red { color: var(--red); } .val-dim { color: var(--text-dim); }
+
+    /* ── Usage Table ── */
+    .usage-table { width: 100%; border-collapse: collapse; }
+    .usage-table th {
+      text-align: left; padding: 8px 12px; font-size: 10px; font-weight: 700;
+      text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-mute);
+      border-bottom: 2px solid var(--border);
+    }
+    .usage-table th.right, .usage-table td.right { text-align: right; }
+    .usage-table td { padding: 8px 12px; border-bottom: 1px solid rgba(0,0,0,0.05); }
+    .usage-table tr:last-child td { border-bottom: none; }
+    .usage-table .total-row td { font-weight: 800; border-top: 2px solid var(--border); color: var(--text); }
+    .cost-val { color: var(--green); font-weight: 700; }
+
+    /* ── Model Portfolio Cards ── */
+    .model-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .model-portfolio {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); position: relative;
+    }
+    .mp-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 12px; }
+    .mp-name { font-size: 16px; font-weight: 800; }
+    .mp-sub { font-size: 10px; color: var(--text-dim); margin-top: 2px; }
+    .mp-badge-wrap { }
+    .mp-badge {
+      display: inline-block; padding: 3px 10px; border-radius: 5px;
+      font-size: 9px; font-weight: 800; color: #fff; letter-spacing: 0.3px;
+    }
+    .mp-badge.deepseek { background: #0066ff; }
+    .mp-badge.openai { background: #10a37f; }
+
+    .mp-metrics { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin-bottom: 16px; }
+    .mp-metric-label { font-size: 10px; color: var(--text-mute); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+    .mp-metric-value { font-family: 'JetBrains Mono', monospace; font-size: 20px; font-weight: 800; }
+    .mp-metric-value.sm { font-size: 14px; }
+
+    .mp-divider { border: 0; border-top: 1px solid var(--border); margin: 12px 0; }
+
+    .mp-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 20px; margin-bottom: 14px; }
+    .mp-stat-label { font-size: 10px; color: var(--text-mute); }
+    .mp-stat-value { font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 700; }
+
+    .mp-predictions-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-mute); margin-bottom: 6px; }
+    .mp-pred-row {
+      display: flex; justify-content: space-between; align-items: center;
+      padding: 3px 0; font-size: 12px;
+    }
+    .mp-pred-dir { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+    .mp-pred-dir.up { color: var(--green); } .mp-pred-dir.down { color: var(--red); }
+    .mp-pred-conf { font-family: 'JetBrains Mono', monospace; font-size: 11px; color: var(--text-dim); }
+    .mp-pred-pnl { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+    .mp-pred-pnl.pos { color: var(--green); } .mp-pred-pnl.neg { color: var(--red); }
+
+    .empty-state { text-align: center; padding: 30px; color: var(--text-mute); font-size: 14px; }
+
+    @media (max-width: 700px) { .model-cards { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>AI Models</h1>
+    <div class="nav-links">
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/trades" class="nav-link">Trades & Learning</a>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- PERFORMANCE COMPARISON -->
+    <div class="card">
+      <div class="card-title">Performance Comparison</div>
+      <div id="perfTableWrap"><div class="empty-state">Waiting for data...</div></div>
+    </div>
+
+    <!-- TOKEN USAGE & COST -->
+    <div class="card">
+      <div class="card-title">Token Usage & Cost</div>
+      <div id="usageTableWrap"><div class="empty-state">No usage data yet</div></div>
+    </div>
+
+    <!-- MODEL PORTFOLIO CARDS -->
+    <div class="model-cards" id="modelCards">
+      <div class="empty-state" style="grid-column:1/-1">Loading model data...</div>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  (function() {
+    'use strict';
+    const socket = io();
+
+    function fmtTokens(n) {
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M';
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K';
+      return String(n);
+    }
+    function fmtCost(c) { return '$' + c.toFixed(2); }
+
+    let latestPaper = null;
+    let latestModelStats = null;
+
+    function render() {
+      renderPerformance();
+      renderUsage();
+      renderCards();
+    }
+
+    function renderPerformance() {
+      const wrap = document.getElementById('perfTableWrap');
+      if (!latestPaper || !latestModelStats || latestModelStats.length === 0) return;
+
+      const learn = latestPaper.learnings;
+      const mc = learn && learn.modelComparison ? learn.modelComparison : {};
+      const stats = latestPaper.stats || {};
+
+      let html = '<table class="perf-table"><thead><tr>' +
+        '<th>Account</th><th>AI Provider</th><th class="right">Portfolio Value</th>' +
+        '<th class="right">P/L</th><th class="right">P/L %</th>' +
+        '<th class="right">Win Rate</th><th class="right">Accuracy</th><th class="right">Trades</th>' +
+        '</tr></thead><tbody>';
+
+      latestModelStats.forEach(function(m) {
+        const mComp = mc[m.id] || {};
+        const isPrimary = m.active;
+        const acc = mComp.accuracy != null ? (mComp.accuracy * 100).toFixed(0) + '%' : '--';
+        const accClass = mComp.accuracy >= 0.6 ? 'val-green' : mComp.accuracy != null && mComp.accuracy < 0.45 ? 'val-red' : 'val-dim';
+
+        // For the primary model, show actual portfolio; others show prediction accuracy
+        const bal = isPrimary ? latestPaper.balance : null;
+        const pnl = isPrimary ? latestPaper.totalPnl : null;
+        const pnlPct = isPrimary ? latestPaper.pnlPct : null;
+        const wr = isPrimary && stats.winRate != null ? (stats.winRate * 100).toFixed(0) + '%' : '--';
+        const trades = mComp.total || 0;
+
+        html += '<tr>' +
+          '<td><span class="model-badge ' + m.id + (isPrimary ? ' primary' : '') + '">' + m.name + '</span></td>' +
+          '<td class="provider-text">' + m.id + ' / ' + m.model + '</td>' +
+          '<td class="right val-mono">' + (bal != null ? '$' + bal.toFixed(2) : '--') + '</td>' +
+          '<td class="right val-mono ' + (pnl > 0 ? 'val-green' : pnl < 0 ? 'val-red' : 'val-dim') + '">' +
+            (pnl != null ? (pnl >= 0 ? '+' : '') + '$' + pnl.toFixed(2) : '--') + '</td>' +
+          '<td class="right val-mono ' + (pnlPct > 0 ? 'val-green' : pnlPct < 0 ? 'val-red' : 'val-dim') + '">' +
+            (pnlPct != null ? (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%' : '--') + '</td>' +
+          '<td class="right val-mono val-dim">' + wr + '</td>' +
+          '<td class="right val-mono ' + accClass + '">' + acc + '</td>' +
+          '<td class="right val-mono val-dim">' + trades + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
+    function renderUsage() {
+      const wrap = document.getElementById('usageTableWrap');
+      if (!latestModelStats || latestModelStats.length === 0) return;
+
+      let totalHour = 0, totalDay = 0, totalWeek = 0, totalAll = 0, totalCost = 0, totalReqs = 0;
+
+      let html = '<table class="usage-table"><thead><tr>' +
+        '<th>Account</th><th>Model</th>' +
+        '<th class="right">Last Hour</th><th class="right">Last 24h</th>' +
+        '<th class="right">Last Week</th><th class="right">All Time</th>' +
+        '<th class="right">Total Cost</th><th class="right">Requests</th>' +
+        '</tr></thead><tbody>';
+
+      latestModelStats.forEach(function(m) {
+        const u = m.usage || {};
+        const hr = u.lastHour || {}, dy = u.last24h || {}, wk = u.lastWeek || {}, at = u.allTime || {};
+
+        totalHour += hr.tokens || 0;
+        totalDay  += dy.tokens || 0;
+        totalWeek += wk.tokens || 0;
+        totalAll  += at.tokens || 0;
+        totalCost += at.cost || 0;
+        totalReqs += at.requests || 0;
+
+        html += '<tr>' +
+          '<td><span class="model-badge ' + m.id + '">' + m.name + '</span></td>' +
+          '<td class="provider-text">' + m.model + '</td>' +
+          '<td class="right val-mono">' + fmtTokens(hr.tokens || 0) + '</td>' +
+          '<td class="right val-mono">' + fmtTokens(dy.tokens || 0) + '</td>' +
+          '<td class="right val-mono">' + fmtTokens(wk.tokens || 0) + '</td>' +
+          '<td class="right val-mono" style="font-weight:800">' + fmtTokens(at.tokens || 0) + '</td>' +
+          '<td class="right cost-val">' + fmtCost(at.cost || 0) + '</td>' +
+          '<td class="right val-mono val-dim">' + (at.requests || 0) + '</td>' +
+          '</tr>';
+      });
+
+      html += '<tr class="total-row">' +
+        '<td colspan="2">TOTAL</td>' +
+        '<td class="right val-mono">' + fmtTokens(totalHour) + '</td>' +
+        '<td class="right val-mono">' + fmtTokens(totalDay) + '</td>' +
+        '<td class="right val-mono">' + fmtTokens(totalWeek) + '</td>' +
+        '<td class="right val-mono">' + fmtTokens(totalAll) + '</td>' +
+        '<td class="right cost-val">' + fmtCost(totalCost) + '</td>' +
+        '<td class="right val-mono val-dim">' + totalReqs + '</td>' +
+        '</tr>';
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
+    function renderCards() {
+      const el = document.getElementById('modelCards');
+      if (!latestModelStats || latestModelStats.length === 0) return;
+
+      const learn = latestPaper ? latestPaper.learnings : null;
+      const mc = learn && learn.modelComparison ? learn.modelComparison : {};
+      const stats = latestPaper ? latestPaper.stats : {};
+      const recentTrades = latestPaper ? latestPaper.recentTrades || [] : [];
+
+      el.innerHTML = '';
+
+      latestModelStats.forEach(function(m) {
+        const mComp = mc[m.id] || {};
+        const u = m.usage || {};
+        const at = u.allTime || {};
+        const isPrimary = m.active;
+
+        // Portfolio for primary, stats for all
+        const bal = isPrimary && latestPaper ? latestPaper.balance : null;
+        const pnl = isPrimary && latestPaper ? latestPaper.totalPnl : null;
+        const pnlPct = isPrimary && latestPaper ? latestPaper.pnlPct : null;
+        const acc = mComp.accuracy != null ? (mComp.accuracy * 100).toFixed(0) + '%' : '--';
+        const accClass = mComp.accuracy >= 0.6 ? 'val-green' : mComp.accuracy != null && mComp.accuracy < 0.45 ? 'val-red' : 'val-dim';
+        const correct = mComp.correct || 0;
+        const total = mComp.total || 0;
+        const avgConf = mComp.avgConfidence || 0;
+
+        var card = document.createElement('div');
+        card.className = 'model-portfolio';
+
+        var headerHtml = '<div class="mp-header"><div><div class="mp-name">' + m.name + '</div>' +
+          '<div class="mp-sub">' + m.id + ' / ' + m.model + '</div></div>' +
+          '<div class="mp-badge-wrap"><span class="mp-badge ' + m.id + '">' + m.id + '</span></div></div>';
+
+        var metricsHtml = '<div class="mp-metrics">';
+        if (isPrimary && bal != null) {
+          metricsHtml += '<div><div class="mp-metric-label">Portfolio Value</div>' +
+            '<div class="mp-metric-value">$' + bal.toFixed(2) + '</div></div>';
+          metricsHtml += '<div><div class="mp-metric-label">P/L</div>' +
+            '<div class="mp-metric-value ' + (pnlPct > 0 ? 'val-green' : pnlPct < 0 ? 'val-red' : 'val-dim') + '">' +
+            (pnlPct >= 0 ? '+' : '') + pnlPct.toFixed(2) + '%</div></div>';
+        } else {
+          metricsHtml += '<div><div class="mp-metric-label">Prediction Accuracy</div>' +
+            '<div class="mp-metric-value ' + accClass + '">' + acc + '</div></div>';
+          metricsHtml += '<div><div class="mp-metric-label">Avg Confidence</div>' +
+            '<div class="mp-metric-value val-dim">' + avgConf + '%</div></div>';
+        }
+        metricsHtml += '</div>';
+
+        var statsHtml = '<hr class="mp-divider"><div class="mp-stats">';
+        if (isPrimary && latestPaper) {
+          statsHtml += '<div><div class="mp-stat-label">Cash</div><div class="mp-stat-value">$' + bal.toFixed(2) + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Trades</div><div class="mp-stat-value">' + (stats.totalTrades || 0) + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Win Rate</div><div class="mp-stat-value">' + (stats.winRate != null ? (stats.winRate * 100).toFixed(0) + '%' : '--') + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Streak</div><div class="mp-stat-value">' + (stats.streak > 0 ? '+' + stats.streak + 'W' : stats.streak < 0 ? stats.streak + 'L' : '--') + '</div></div>';
+        } else {
+          statsHtml += '<div><div class="mp-stat-label">Correct</div><div class="mp-stat-value val-green">' + correct + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Wrong</div><div class="mp-stat-value val-red">' + (mComp.wrong || 0) + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Total Predictions</div><div class="mp-stat-value">' + total + '</div></div>';
+          statsHtml += '<div><div class="mp-stat-label">Requests</div><div class="mp-stat-value">' + (at.requests || 0) + '</div></div>';
+        }
+        statsHtml += '</div>';
+
+        // Token cost
+        var costHtml = '<hr class="mp-divider"><div class="mp-stats">' +
+          '<div><div class="mp-stat-label">Tokens Used</div><div class="mp-stat-value">' + fmtTokens(at.tokens || 0) + '</div></div>' +
+          '<div><div class="mp-stat-label">Total Cost</div><div class="mp-stat-value cost-val">' + fmtCost(at.cost || 0) + '</div></div>' +
+          '</div>';
+
+        // Recent predictions from this model (from recentTrades allPredictions... we don't have that directly, but we can show last analysis)
+        var predHtml = '';
+
+        card.innerHTML = headerHtml + metricsHtml + statsHtml + costHtml + predHtml;
+        el.appendChild(card);
+      });
+    }
+
+    socket.on('tick', function(data) {
+      if (data.paper) latestPaper = data.paper;
+      if (data.modelStats) latestModelStats = data.modelStats;
+      render();
+    });
+
+    socket.on('paperUpdate', function(ps) {
+      if (ps) latestPaper = ps;
+      render();
+    });
+
+    socket.on('modelStats', function(ms) {
+      if (ms) latestModelStats = ms;
+      render();
+    });
+  })();
+  </script>
+</body>
+</html>

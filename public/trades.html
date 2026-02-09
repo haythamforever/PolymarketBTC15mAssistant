@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trades & Learning — BTC 15m Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f0f2f5; --bg-card: #ffffff; --bg-card2: #f7f8fa; --border: #e0e3e8;
+      --text: #1a1d23; --text-dim: #5a6070; --text-mute: #9ca3b0;
+      --green: #0d9f6e; --green-bg: rgba(13,159,110,0.08);
+      --red: #dc2c42; --red-bg: rgba(220,44,66,0.08);
+      --amber: #d97706; --amber-bg: rgba(217,119,6,0.08);
+      --purple: #7c3aed; --purple-bg: rgba(124,58,237,0.08);
+      --blue: #2563eb; --radius: 10px;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.5; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 20px; border-bottom: 1px solid var(--border); background: var(--bg-card);
+    }
+    .page-header h1 { font-size: 16px; font-weight: 800; }
+    .back-link { font-size: 11px; color: var(--purple); text-decoration: none; padding: 4px 12px; border: 1px solid rgba(124,58,237,0.3); border-radius: 5px; font-weight: 600; transition: all 0.2s; }
+    .back-link:hover { background: var(--purple-bg); border-color: var(--purple); }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 16px 20px; }
+
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 16px; }
+    @media (max-width: 900px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+    .card { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.05); }
+    .card-title { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .badge { font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+    .badge.green { background: rgba(13,159,110,0.12); color: var(--green); border: 1px solid rgba(13,159,110,0.3); }
+    .badge.dim { background: var(--bg); color: var(--text-mute); border: 1px solid var(--border); }
+
+    /* Trade Table */
+    .trade-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+    .trade-table th { text-align: left; padding: 6px 8px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-mute); border-bottom: 2px solid var(--border); }
+    .trade-table td { padding: 6px 8px; border-bottom: 1px solid rgba(0,0,0,0.5); vertical-align: top; }
+    .trade-table tr:hover { background: rgba(0,0,0,0.03); }
+    .trade-table .mono { font-family: 'JetBrains Mono', monospace; font-size: 11px; }
+    .t-up { color: var(--green); font-weight: 700; } .t-down { color: var(--red); font-weight: 700; }
+    .t-win { color: var(--green); } .t-loss { color: var(--red); } .t-unk { color: var(--text-mute); }
+    .t-reason { font-size: 10px; color: var(--text-dim); max-width: 300px; line-height: 1.3; }
+
+    /* Indicator Bars */
+    .ind-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; border-bottom: 1px solid rgba(0,0,0,0.4); }
+    .ind-row:last-child { border-bottom: none; }
+    .ind-name { font-size: 12px; color: var(--text-dim); font-weight: 500; text-transform: capitalize; }
+    .ind-bar-wrap { display: flex; align-items: center; gap: 8px; }
+    .ind-bar-track { width: 80px; height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+    .ind-bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+    .ind-bar-fill.good { background: var(--green); } .ind-bar-fill.mid { background: var(--amber); } .ind-bar-fill.bad { background: var(--red); }
+    .ind-pct { font-family: 'JetBrains Mono', monospace; font-size: 12px; font-weight: 700; min-width: 40px; text-align: right; }
+    .ind-pct.good { color: var(--green); } .ind-pct.mid { color: var(--amber); } .ind-pct.bad { color: var(--red); }
+
+    /* Regime */
+    .regime-row { display: flex; justify-content: space-between; align-items: center; padding: 5px 0; border-bottom: 1px solid rgba(0,0,0,0.4); font-size: 12px; }
+    .regime-name { color: var(--text-dim); font-weight: 600; }
+    .regime-stat { font-family: 'JetBrains Mono', monospace; }
+
+    /* Lessons */
+    .lesson { padding: 8px 12px; margin-bottom: 6px; border-radius: 6px; background: var(--bg); border: 1px solid var(--border); font-size: 12px; line-height: 1.5; color: var(--text-dim); }
+    .lesson strong { color: var(--text); }
+
+    /* Mistake */
+    .mistake { padding: 8px 12px; margin-bottom: 8px; border-radius: 6px; border-left: 4px solid var(--red); background: var(--bg); font-size: 11px; line-height: 1.5; }
+    .mistake .summary { color: var(--text-dim); }
+    .mistake .wrong { color: var(--red); font-family: 'JetBrains Mono', monospace; font-size: 10px; margin-top: 3px; }
+
+    /* Model Comparison */
+    .model-card { text-align: center; padding: 16px; }
+    .model-name { font-size: 11px; font-weight: 700; text-transform: uppercase; color: var(--text-dim); letter-spacing: 1px; margin-bottom: 8px; }
+    .model-accuracy { font-family: 'JetBrains Mono', monospace; font-size: 28px; font-weight: 800; }
+    .model-accuracy.good { color: var(--green); } .model-accuracy.mid { color: var(--amber); } .model-accuracy.bad { color: var(--red); }
+    .model-detail { font-size: 10px; color: var(--text-dim); margin-top: 4px; }
+
+    /* Misc */
+    .empty-state { text-align: center; padding: 30px; color: var(--text-mute); font-size: 13px; }
+    .conf-row { display: flex; gap: 20px; font-size: 12px; margin-top: 8px; color: var(--text-dim); }
+    .conf-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; }
+    .conf-val.green { color: var(--green); } .conf-val.red { color: var(--red); }
+    .trend-box { text-align: center; padding: 12px; margin-top: 12px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg); }
+    .trend-label { font-size: 9px; font-weight: 700; text-transform: uppercase; color: var(--text-mute); }
+    .trend-value { font-family: 'JetBrains Mono', monospace; font-size: 16px; font-weight: 800; margin-top: 4px; }
+    .trend-value.improving { color: var(--green); } .trend-value.declining { color: var(--red); } .trend-value.stable { color: var(--text-dim); }
+  </style>
+</head>
+<body>
+
+  <div class="page-header">
+    <h1>Trades & Agent Learning</h1>
+    <div style="display:flex;gap:8px">
+      <a href="/" class="back-link">Dashboard</a>
+      <a href="/models" class="back-link">AI Models</a>
+    </div>
+  </div>
+
+  <div class="container">
+
+    <!-- MODEL COMPARISON -->
+    <div id="modelSection" class="grid-2" style="display:none"></div>
+
+    <!-- TRADE HISTORY -->
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title"><span>Trade History</span><span class="badge dim" id="tradeCountBadge">0 trades</span></div>
+      <div id="tradeTableWrap">
+        <div class="empty-state">No trades yet. The agent will start trading once it has enough data and confidence.</div>
+      </div>
+    </div>
+
+    <div class="grid-3">
+      <!-- INDICATOR ACCURACY -->
+      <div class="card">
+        <div class="card-title"><span>Indicator Accuracy</span><span class="badge dim" id="learnBadge">--</span></div>
+        <div id="indAccuracy"><div class="empty-state">Need 3+ trades</div></div>
+      </div>
+
+      <!-- LESSONS LEARNED -->
+      <div class="card">
+        <div class="card-title"><span>Lessons Learned</span></div>
+        <div id="lessonsWrap"><div class="empty-state">No lessons yet</div></div>
+        <div class="conf-row" id="confRow" style="display:none">
+          <span>Wins avg: <span class="conf-val green" id="confWin">--</span></span>
+          <span>Losses avg: <span class="conf-val red" id="confLoss">--</span></span>
+        </div>
+        <div class="trend-box" id="trendBox" style="display:none">
+          <div class="trend-label">Improvement Trend</div>
+          <div class="trend-value stable" id="trendVal">--</div>
+        </div>
+      </div>
+
+      <!-- RECENT MISTAKES -->
+      <div class="card">
+        <div class="card-title"><span>Recent Mistakes</span><span class="badge dim" id="mistakeBadge">0</span></div>
+        <div id="mistakesWrap"><div class="empty-state">No mistakes to review</div></div>
+      </div>
+    </div>
+
+    <!-- REGIME PERFORMANCE -->
+    <div class="grid-2">
+      <div class="card">
+        <div class="card-title">Regime Performance</div>
+        <div id="regimeWrap"><div class="empty-state">Not enough data</div></div>
+      </div>
+      <div class="card">
+        <div class="card-title">Time Window Performance</div>
+        <div id="timeWrap"><div class="empty-state">Not enough data</div></div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+  (function() {
+    'use strict';
+    const socket = io();
+
+    function renderTrades(p) {
+      if (!p || !p.recentTrades || p.recentTrades.length === 0) return;
+      document.getElementById('tradeCountBadge').textContent = p.stats.totalTrades + ' trades';
+      const wrap = document.getElementById('tradeTableWrap');
+      let html = '<table class="trade-table"><thead><tr><th>Side</th><th>Outcome</th><th>P&L</th><th>Conf</th><th>Model</th><th>MG</th><th>Balance</th><th>Reasoning</th></tr></thead><tbody>';
+      p.recentTrades.forEach(function(t) {
+        const sideClass = t.side === 'UP' ? 't-up' : 't-down';
+        const outcomeClass = t.outcome === 'WIN' ? 't-win' : t.outcome === 'LOSS' ? 't-loss' : 't-unk';
+        const pnlClass = t.pnl >= 0 ? 't-up' : 't-down';
+        html += '<tr>' +
+          '<td class="mono ' + sideClass + '">' + t.side + '</td>' +
+          '<td class="mono ' + outcomeClass + '">' + t.outcome + '</td>' +
+          '<td class="mono ' + pnlClass + '">' + (t.pnl >= 0 ? '+' : '') + '$' + t.pnl.toFixed(2) + '</td>' +
+          '<td class="mono">' + (t.aiConfidence || '--') + '%</td>' +
+          '<td style="font-size:10px;color:var(--text-mute)">' + (t.aiProviderId || '--') + '</td>' +
+          '<td class="mono" style="color:var(--amber)">' + (t.martingaleLevel > 0 ? 'M' + t.martingaleLevel : '-') + '</td>' +
+          '<td class="mono">$' + (t.balanceAfter || 0).toFixed(2) + '</td>' +
+          '<td class="t-reason">' + (t.aiReasoning || '') + '</td>' +
+          '</tr>';
+      });
+      html += '</tbody></table>';
+      wrap.innerHTML = html;
+    }
+
+    function renderLearning(learn) {
+      if (!learn || !learn.ready) {
+        document.getElementById('learnBadge').textContent = learn ? (learn.totalAnalyzed || 0) + ' trades' : '--';
+        return;
+      }
+      document.getElementById('learnBadge').textContent = learn.totalAnalyzed + ' trades | ' + learn.overallWinRate + '%';
+      document.getElementById('learnBadge').className = 'badge green';
+
+      // Indicator accuracy
+      const indEl = document.getElementById('indAccuracy'); indEl.innerHTML = '';
+      const allInds = Object.entries(learn.indicatorAccuracy || {}).filter(function(p) { return p[1].total >= 2; }).sort(function(a, b) { return (b[1].accuracy || 0) - (a[1].accuracy || 0); });
+      if (allInds.length === 0) { indEl.innerHTML = '<div class="empty-state">Not enough data</div>'; }
+      else { allInds.forEach(function(pair) { var name = pair[0], d = pair[1]; var pct = d.accuracy != null ? (d.accuracy * 100) : 0; var cls = pct >= 60 ? 'good' : pct >= 45 ? 'mid' : 'bad'; var row = document.createElement('div'); row.className = 'ind-row'; row.innerHTML = '<span class="ind-name">' + name + ' <span style="font-size:9px;color:var(--text-mute)">(' + d.correct + '/' + d.total + ')</span></span><div class="ind-bar-wrap"><div class="ind-bar-track"><div class="ind-bar-fill ' + cls + '" style="width:' + pct + '%"></div></div><span class="ind-pct ' + cls + '">' + pct.toFixed(0) + '%</span></div>'; indEl.appendChild(row); }); }
+
+      // Regime
+      var regEl = document.getElementById('regimeWrap'); regEl.innerHTML = '';
+      Object.entries(learn.regimePerformance || {}).forEach(function(pair) { var regime = pair[0], p = pair[1]; var wr = p.winRate != null ? (p.winRate * 100).toFixed(0) + '%' : 'n/a'; var cls = p.winRate >= 0.6 ? 'good' : p.winRate < 0.4 ? 'bad' : 'mid'; var row = document.createElement('div'); row.className = 'regime-row'; row.innerHTML = '<span class="regime-name">' + regime + '</span><span class="regime-stat">' + p.wins + 'W / ' + p.losses + 'L — <span class="ind-pct ' + cls + '" style="min-width:auto">' + wr + '</span></span>'; regEl.appendChild(row); });
+
+      // Time performance
+      var timeEl = document.getElementById('timeWrap'); timeEl.innerHTML = '';
+      var labels = { early: '>10 min left', mid: '5-10 min', late: '<5 min' };
+      Object.entries(learn.timePerformance || {}).forEach(function(pair) { var bucket = pair[0], p = pair[1]; if (p.total < 1) return; var wr = p.winRate != null ? (p.winRate * 100).toFixed(0) + '%' : 'n/a'; var cls = p.winRate >= 0.6 ? 'good' : p.winRate < 0.4 ? 'bad' : 'mid'; var row = document.createElement('div'); row.className = 'regime-row'; row.innerHTML = '<span class="regime-name">' + (labels[bucket] || bucket) + '</span><span class="regime-stat">' + p.wins + 'W / ' + p.losses + 'L — <span class="ind-pct ' + cls + '" style="min-width:auto">' + wr + '</span></span>'; timeEl.appendChild(row); });
+
+      // Lessons
+      var lessEl = document.getElementById('lessonsWrap'); lessEl.innerHTML = '';
+      var lessons = learn.lessons || [];
+      if (lessons.length > 0) { lessons.forEach(function(l) { var div = document.createElement('div'); div.className = 'lesson'; div.textContent = l; lessEl.appendChild(div); }); } else { lessEl.innerHTML = '<div class="empty-state">No patterns detected yet</div>'; }
+
+      var cal = learn.confidenceCalibration;
+      if (cal && (cal.avgWinConf || cal.avgLossConf)) { document.getElementById('confRow').style.display = ''; document.getElementById('confWin').textContent = cal.avgWinConf != null ? cal.avgWinConf + '%' : '--'; document.getElementById('confLoss').textContent = cal.avgLossConf != null ? cal.avgLossConf + '%' : '--'; }
+
+      var rv = learn.recentVsOlder;
+      if (rv && rv.recent5WinRate != null && rv.olderWinRate != null) { document.getElementById('trendBox').style.display = ''; var rP = (rv.recent5WinRate * 100).toFixed(0), oP = (rv.olderWinRate * 100).toFixed(0), diff = rv.recent5WinRate - rv.olderWinRate; var te = document.getElementById('trendVal'); if (diff > 0.1) { te.textContent = rP + '% vs ' + oP + '% IMPROVING'; te.className = 'trend-value improving'; } else if (diff < -0.1) { te.textContent = rP + '% vs ' + oP + '% DECLINING'; te.className = 'trend-value declining'; } else { te.textContent = rP + '% STABLE'; te.className = 'trend-value stable'; } }
+
+      // Model comparison
+      var mc = learn.modelComparison; var mcKeys = mc ? Object.keys(mc) : [];
+      var msEl = document.getElementById('modelSection');
+      if (mcKeys.length > 0) {
+        msEl.style.display = ''; msEl.innerHTML = '';
+        mcKeys.forEach(function(id) { var m = mc[id]; if (m.total < 1) return; var acc = m.accuracy != null ? (m.accuracy * 100).toFixed(0) : '0'; var cls = m.accuracy >= 0.6 ? 'good' : m.accuracy >= 0.45 ? 'mid' : 'bad'; var card = document.createElement('div'); card.className = 'card model-card'; card.innerHTML = '<div class="model-name">' + m.name + '</div><div class="model-accuracy ' + cls + '">' + acc + '%</div><div class="model-detail">' + m.correct + ' correct / ' + m.total + ' total<br>Avg confidence: ' + (m.avgConfidence || 0) + '%</div>'; msEl.appendChild(card); });
+      }
+
+      // Mistakes
+      var mistEl = document.getElementById('mistakesWrap'); mistEl.innerHTML = '';
+      var mistakes = learn.recentMistakes || [];
+      document.getElementById('mistakeBadge').textContent = mistakes.length;
+      if (mistakes.length > 0) { mistakes.forEach(function(m) { var div = document.createElement('div'); div.className = 'mistake'; div.innerHTML = '<div class="summary">' + m.summary + '</div>' + (m.wrongIndicators && m.wrongIndicators.length > 0 ? '<div class="wrong">Wrong: ' + m.wrongIndicators.join(', ') + '</div>' : ''); mistEl.appendChild(div); }); } else { mistEl.innerHTML = '<div class="empty-state">No mistakes to review</div>'; }
+    }
+
+    socket.on('tick', function(data) {
+      if (data.paper) { renderTrades(data.paper); if (data.paper.learnings) renderLearning(data.paper.learnings); }
+    });
+    socket.on('paperUpdate', function(ps) { if (ps) { renderTrades(ps); if (ps.learnings) renderLearning(ps.learnings); } });
+  })();
+  </script>
+</body>
+</html>
