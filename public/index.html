@@ -520,6 +520,15 @@
         <div class="real-stat-row"><span>Daily Loss Left</span><span class="val" id="realDailyLeft">$10.00</span></div>
       </div>
     </div>
+    <div class="paper-cell">
+      <div class="paper-cell-title">Martingale</div>
+      <div style="text-align:center;padding:4px 0;">
+        <div class="real-stat-row"><span>Status</span><span class="val" id="realMgStatus" style="font-weight:800">OFF</span></div>
+        <div class="real-stat-row"><span>Level</span><span class="val" id="realMgLevel">0 / 3</span></div>
+        <div class="real-stat-row"><span>Next Size</span><span class="val" id="realMgNextSize">--</span></div>
+        <div class="real-stat-row"><span>Multiplier</span><span class="val" id="realMgMultiplier">1.5x</span></div>
+      </div>
+    </div>
     <div class="paper-cell" style="display:flex;flex-direction:column;justify-content:center;gap:6px;">
       <button class="real-kill-btn" id="realKillBtn">KILL SWITCH</button>
       <div style="font-size:7px;text-align:center;color:var(--text-mute);">Cancels all orders &amp; halts trading</div>
@@ -714,6 +723,14 @@
       $('realMaxPos').textContent = '$' + (r.maxPositionUsd || 5).toFixed(2);
       $('realDailyLeft').textContent = '$' + (r.dailyLossRemaining || 0).toFixed(2);
       $('realDailyLeft').style.color = (r.dailyLossRemaining || 0) < 2 ? 'var(--red)' : 'var(--text)';
+
+      // Martingale
+      var mg = r.martingale || {};
+      $('realMgStatus').textContent = mg.enabled ? 'ON' : 'OFF';
+      $('realMgStatus').style.color = mg.enabled ? 'var(--amber)' : 'var(--text-mute)';
+      $('realMgLevel').textContent = (mg.level || 0) + ' / ' + (mg.maxLevel || 3);
+      $('realMgNextSize').textContent = mg.effectiveMaxSpend ? '$' + mg.effectiveMaxSpend.toFixed(2) : '--';
+      $('realMgMultiplier').textContent = (mg.multiplier || 1.5) + 'x';
 
       // Confirm button
       const confirmBtn = $('realConfirmBtn');

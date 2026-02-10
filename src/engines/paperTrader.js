@@ -5,6 +5,7 @@ import {
   dbGetJournal, dbInsertJournalEntry,
   dbInsertPaperTrade,
   dbLoadLearnings, dbSaveLearnings,
+  dbGetConfig,
 } from '../db/queries.js';
 
 const STATE_FILE  = './logs/paper_trader_state.json';
@@ -697,10 +698,41 @@ function adjustLearning() {
   }
 }
 
+/* ── Settings (can be updated at runtime from settings page) ── */
+
+export function applyPaperSettings(s) {
+  if (!s || typeof s !== 'object' || !state) return;
+  if (s.initialBalance != null) state.config.initialBalance = Number(s.initialBalance);
+  if (s.positionSizePct != null) state.config.positionSizePct = Number(s.positionSizePct);
+  if (s.minAiConfidence != null) state.config.minAiConfidence = Number(s.minAiConfidence);
+  if (s.minEntryTimeLeft != null) state.config.minEntryTimeLeft = Number(s.minEntryTimeLeft);
+  if (s.maxEntryTimeLeft != null) state.config.maxEntryTimeLeft = Number(s.maxEntryTimeLeft);
+  if (s.learningWindow != null) state.config.learningWindow = Number(s.learningWindow);
+  if (s.maxDrawdownHalt != null) state.config.maxDrawdownHalt = Number(s.maxDrawdownHalt);
+  if (s.martingale && typeof s.martingale === 'object') {
+    if (s.martingale.enabled != null) state.config.martingale.enabled = !!s.martingale.enabled;
+    if (s.martingale.multiplier != null) state.config.martingale.multiplier = Number(s.martingale.multiplier);
+    if (s.martingale.maxLevel != null) state.config.martingale.maxLevel = Number(s.martingale.maxLevel);
+    if (s.martingale.maxPositionPct != null) state.config.martingale.maxPositionPct = Number(s.martingale.maxPositionPct);
+  }
+  saveState();
+  console.log(`  [paper] config updated: posSz=${(state.config.positionSizePct * 100).toFixed(1)}% minConf=${state.config.minAiConfidence} MG=${state.config.martingale.enabled ? 'ON' : 'OFF'}`);
+}
+
+async function loadConfigFromDb() {
+  try {
+    const dbCfg = await dbGetConfig('paper_config');
+    if (dbCfg && state) {
+      applyPaperSettings(dbCfg);
+    }
+  } catch { /* ignore — use defaults */ }
+}
+
 /* ── Main Tick ────────────────────────────────────────── */
 
 export async function initPaperTrader() {
   await loadState();
+  await loadConfigFromDb();
   await loadJournal();
   await loadLearnings();
   if (journal.length >= 3) computeLearnings();

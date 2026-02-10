@@ -220,6 +220,26 @@
           <label class="form-label">Min AI Confidence (%)</label>
           <input class="form-input mono" type="number" id="real_minConfidence" step="1" value="80">
         </div>
+        <div class="form-group">
+          <label class="form-label">Martingale</label>
+          <div class="form-toggle">
+            <input type="checkbox" id="real_martingaleEnabled" class="form-input">
+            <span style="font-size:11px;color:var(--red);font-weight:600">Increase position after losses</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Multiplier</label>
+          <input class="form-input mono" type="number" id="real_martingaleMultiplier" step="0.1" value="1.5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Max Level</label>
+          <input class="form-input mono" type="number" id="real_martingaleMaxLevel" step="1" value="3">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Max Position ($)</label>
+          <input class="form-input mono" type="number" id="real_martingaleMaxPositionUsd" step="0.5" value="10.00">
+          <div class="form-hint">Hard cap per trade even with martingale</div>
+        </div>
       </div>
     </div>
 
@@ -319,6 +339,12 @@
         if (r2.maxDailyLossUsd != null) document.getElementById('real_maxDailyLossUsd').value = r2.maxDailyLossUsd;
         if (r2.maxOpenOrders != null) document.getElementById('real_maxOpenOrders').value = r2.maxOpenOrders;
         if (r2.minConfidence != null) document.getElementById('real_minConfidence').value = r2.minConfidence;
+        if (r2.martingale) {
+          if (r2.martingale.enabled != null) document.getElementById('real_martingaleEnabled').checked = r2.martingale.enabled;
+          if (r2.martingale.multiplier != null) document.getElementById('real_martingaleMultiplier').value = r2.martingale.multiplier;
+          if (r2.martingale.maxLevel != null) document.getElementById('real_martingaleMaxLevel').value = r2.martingale.maxLevel;
+          if (r2.martingale.maxPositionUsd != null) document.getElementById('real_martingaleMaxPositionUsd').value = r2.martingale.maxPositionUsd;
+        }
 
         // AI
         var a = s.ai_config || {};
@@ -356,6 +382,12 @@
           maxDailyLossUsd: parseFloat(document.getElementById('real_maxDailyLossUsd').value),
           maxOpenOrders: parseInt(document.getElementById('real_maxOpenOrders').value),
           minConfidence: parseInt(document.getElementById('real_minConfidence').value),
+          martingale: {
+            enabled: document.getElementById('real_martingaleEnabled').checked,
+            multiplier: parseFloat(document.getElementById('real_martingaleMultiplier').value),
+            maxLevel: parseInt(document.getElementById('real_martingaleMaxLevel').value),
+            maxPositionUsd: parseFloat(document.getElementById('real_martingaleMaxPositionUsd').value),
+          }
         },
         ai_config: {
           primaryProvider: document.getElementById('ai_primaryProvider').value,

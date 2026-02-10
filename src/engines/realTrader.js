@@ -2,6 +2,8 @@
  * Real Polymarket Trading Engine
  * Mirrors paperTrader.js but executes real orders via the CLOB API.
  * Has strict safety controls — will NOT trade unless explicitly enabled.
+ * Supports martingale position sizing (optional).
+ * Config can be updated at runtime via the settings page (DB).
  */
 
 import fs from 'node:fs';
@@ -15,18 +17,26 @@ import {
   getOpenOrders,
   fetchWalletBalance,
 } from '../data/polymarketClob.js';
-import { dbLoadRealState, dbSaveRealState, dbInsertRealTrade } from '../db/queries.js';
+import { dbLoadRealState, dbSaveRealState, dbInsertRealTrade, dbGetConfig } from '../db/queries.js';
 
-/* ── Config ──────────────────────────────────────────── */
+/* ── Config (mutable — can be updated from settings page) ── */
 
 const STATE_FILE     = './logs/real_trader_state.json';
 const TRADES_CSV     = './logs/real_trades.csv';
 
-const REAL_ENABLED   = (process.env.REAL_TRADING_ENABLED || 'false').toLowerCase() === 'true';
-const MAX_POS_USD    = Number(process.env.REAL_MAX_POSITION_USD) || 5.00;
-const MAX_DAILY_LOSS = Number(process.env.REAL_MAX_DAILY_LOSS_USD) || 10.00;
-const MAX_OPEN       = Number(process.env.REAL_MAX_OPEN_ORDERS) || 1;
-const MIN_CONFIDENCE = 80; // Higher bar than paper (72%)
+let config = {
+  enabled:        (process.env.REAL_TRADING_ENABLED || 'false').toLowerCase() === 'true',
+  maxPositionUsd: Number(process.env.REAL_MAX_POSITION_USD) || 5.00,
+  maxDailyLossUsd: Number(process.env.REAL_MAX_DAILY_LOSS_USD) || 10.00,
+  maxOpenOrders:  Number(process.env.REAL_MAX_OPEN_ORDERS) || 1,
+  minConfidence:  80,
+  martingale: {
+    enabled: false,
+    multiplier: 1.5,
+    maxLevel: 3,
+    maxPositionUsd: 10.00, // hard cap USD per trade
+  },
+};
 
 /* ── State ───────────────────────────────────────────── */
 
@@ -41,13 +51,14 @@ function ensureDir(filePath) {
 
 function createDefaultState() {
   return {
-    enabled: REAL_ENABLED,
-    currentOrder: null,        // { id, side, tokenId, price, size, cost, marketSlug, ... }
+    enabled: config.enabled,
+    currentOrder: null,
     lastSettledSlug: null,
     lastPtbDelta: null,
     dailyLoss: 0,
     dailyLossDate: new Date().toISOString().slice(0, 10),
-    history: [],               // settled trades
+    martingaleLevel: 0,
+    history: [],
     stats: {
       totalTrades: 0,
       wins: 0,
@@ -57,6 +68,8 @@ function createDefaultState() {
     },
   };
 }
+
+/* ── State Persistence ────────────────────────────────── */
 
 async function loadState() {
   // Try DB first
@@ -70,8 +83,9 @@ async function loadState() {
         lastPtbDelta: dbState.lastPtbDelta,
         dailyLoss: dbState.dailyLoss ?? 0,
         dailyLossDate: dbState.dailyLossDate ?? new Date().toISOString().slice(0, 10),
+        martingaleLevel: dbState.stats?.martingaleLevel ?? 0,
         stats: { ...createDefaultState().stats, ...(dbState.stats ?? {}) },
-        history: [], // history is in real_trades table
+        history: [],
       };
       console.log(`  [real] loaded (DB): ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
       return;
@@ -89,29 +103,32 @@ async function loadState() {
     }
   } catch (err) { console.error(`  [real] load error: ${err.message}`); }
   state = createDefaultState();
-  console.log(`  [real] initialized (enabled: ${REAL_ENABLED})`);
+  console.log(`  [real] initialized (enabled: ${config.enabled})`);
 }
 
 function saveState() {
-  // Fire-and-forget DB save
-  dbSaveRealState(state).catch(() => {});
-  // File-based fallback
+  // Include martingaleLevel in stats for DB persistence
+  const stateForDb = {
+    ...state,
+    stats: { ...state.stats, martingaleLevel: state.martingaleLevel },
+  };
+  dbSaveRealState(stateForDb).catch(() => {});
   try { ensureDir(STATE_FILE); fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8'); } catch { /* */ }
 }
 
 /* ── CSV Log ─────────────────────────────────────────── */
 
 function logTradeCsv(trade) {
-  // Insert into DB (fire-and-forget)
   dbInsertRealTrade(trade).catch(() => {});
 
-  const header = 'timestamp,side,entry_price,shares,cost,outcome,pnl,ai_confidence,time_left,reasoning';
+  const header = 'timestamp,side,entry_price,shares,cost,outcome,pnl,ai_confidence,time_left,mg_level,reasoning';
   const reasoning = String(trade.aiReasoning || '').replace(/,/g, ';').replace(/\n/g, ' ').slice(0, 200);
   const row = [
     trade.settledAt, trade.side, trade.entryPrice?.toFixed(4),
     trade.shares?.toFixed(4), trade.cost?.toFixed(2),
     trade.outcome, trade.pnl?.toFixed(2),
     trade.aiConfidence, trade.timeLeftAtEntry?.toFixed(1) ?? '',
+    trade.martingaleLevel ?? 0,
     reasoning
   ].join(',');
   try {
@@ -128,7 +145,6 @@ function checkDailyReset() {
   if (state.dailyLossDate !== today) {
     state.dailyLoss = 0;
     state.dailyLossDate = today;
-    // Un-halt if it was daily-loss related
     if (haltReason === 'daily_loss_limit') {
       halted = false;
       haltReason = '';
@@ -140,36 +156,45 @@ function checkDailyReset() {
 /* ── Safety Checks ───────────────────────────────────── */
 
 function canTrade() {
-  if (!REAL_ENABLED) return { ok: false, reason: 'REAL_TRADING_ENABLED is false in .env' };
+  if (!config.enabled) return { ok: false, reason: 'REAL_TRADING_ENABLED is false' };
   if (!sessionConfirmed) return { ok: false, reason: 'Session not confirmed from UI' };
   if (!isClobReady()) return { ok: false, reason: 'CLOB client not initialized' };
   if (halted) return { ok: false, reason: `Trading halted: ${haltReason}` };
 
   checkDailyReset();
-  if (state.dailyLoss >= MAX_DAILY_LOSS) {
+  if (state.dailyLoss >= config.maxDailyLossUsd) {
     halted = true;
     haltReason = 'daily_loss_limit';
-    return { ok: false, reason: `Daily loss limit reached ($${state.dailyLoss.toFixed(2)} >= $${MAX_DAILY_LOSS.toFixed(2)})` };
+    return { ok: false, reason: `Daily loss limit reached ($${state.dailyLoss.toFixed(2)} >= $${config.maxDailyLossUsd.toFixed(2)})` };
   }
 
   return { ok: true };
 }
 
+/* ── Martingale ─────────────────────────────────────── */
+
+function getEffectiveMaxSpend() {
+  let base = config.maxPositionUsd;
+  if (!config.martingale.enabled) return base;
+  const { multiplier, maxLevel, maxPositionUsd: cap } = config.martingale;
+  const level = Math.min(state.martingaleLevel ?? 0, maxLevel);
+  return Math.min(base * Math.pow(multiplier, level), cap);
+}
+
 /* ── Trade Execution ─────────────────────────────────── */
 
 async function enterTrade(side, price, tokenId, data) {
-  if (state.currentOrder) return; // already in a trade
+  if (state.currentOrder) return;
   if (price <= 0 || price >= 1) return;
 
-  // Cap position size
-  const maxSpend = Math.min(MAX_POS_USD, price < 0.5 ? MAX_POS_USD : MAX_POS_USD * 0.5);
-  const shares = Math.floor(maxSpend / price); // whole shares only for safety
+  const maxSpend = getEffectiveMaxSpend();
+  const shares = Math.floor(maxSpend / price);
   if (shares < 1) return;
   const cost = shares * price;
 
-  console.log(`  [REAL TRADE] ENTERING ${side} | ${shares} shares @ ${(price * 100).toFixed(0)}¢ | cost $${cost.toFixed(2)}`);
+  const mgTag = config.martingale.enabled ? ` [MG:${state.martingaleLevel}]` : '';
+  console.log(`  [REAL TRADE] ENTERING ${side} | ${shares} shares @ ${(price * 100).toFixed(0)}¢ | cost $${cost.toFixed(2)}${mgTag}`);
 
-  // Place the actual order
   const result = await placeBuyOrder(tokenId, price, shares, {
     tickSize: '0.01',
     negRisk: false,
@@ -193,6 +218,7 @@ async function enterTrade(side, price, tokenId, data) {
     aiConfidence: data.aiConfidence,
     aiReasoning: data.aiReasoning || '',
     timeLeftAtEntry: data.timeLeft,
+    martingaleLevel: state.martingaleLevel,
   };
 
   saveState();
@@ -204,12 +230,10 @@ function settleTrade(outcome) {
 
   let pnl = 0;
   if (outcome === 'WIN') {
-    // Shares pay out $1 each on win
     pnl = trade.shares * 1.0 - trade.cost;
   } else if (outcome === 'LOSS') {
     pnl = -trade.cost;
   }
-  // UNKNOWN = refund (pnl stays 0)
 
   const settledTrade = {
     ...trade,
@@ -220,14 +244,22 @@ function settleTrade(outcome) {
 
   state.history.push(settledTrade);
 
-  // Update stats
   if (outcome !== 'UNKNOWN') {
     state.stats.totalTrades += 1;
     if (outcome === 'WIN') {
       state.stats.wins += 1;
+      // Martingale: reset on win
+      state.martingaleLevel = 0;
     } else {
       state.stats.losses += 1;
       state.dailyLoss += Math.abs(pnl);
+      // Martingale: increase level on loss
+      if (config.martingale.enabled) {
+        state.martingaleLevel = Math.min(
+          (state.martingaleLevel ?? 0) + 1,
+          config.martingale.maxLevel
+        );
+      }
     }
     state.stats.totalPnl += pnl;
   }
@@ -235,30 +267,65 @@ function settleTrade(outcome) {
   state.currentOrder = null;
 
   const icon = outcome === 'WIN' ? '+' : outcome === 'LOSS' ? '-' : '~';
-  console.log(`  [REAL TRADE] SETTLE ${outcome} | ${icon}$${Math.abs(pnl).toFixed(2)} | total P&L: $${state.stats.totalPnl.toFixed(2)}`);
+  const mgTag = config.martingale.enabled ? ` | MG→${state.martingaleLevel}` : '';
+  console.log(`  [REAL TRADE] SETTLE ${outcome} | ${icon}$${Math.abs(pnl).toFixed(2)} | total P&L: $${state.stats.totalPnl.toFixed(2)}${mgTag}`);
 
   logTradeCsv(settledTrade);
   saveState();
 
-  // Check daily loss
-  if (state.dailyLoss >= MAX_DAILY_LOSS) {
+  if (state.dailyLoss >= config.maxDailyLossUsd) {
     halted = true;
     haltReason = 'daily_loss_limit';
-    console.log(`  [REAL TRADE] HALTED — daily loss $${state.dailyLoss.toFixed(2)} exceeds limit $${MAX_DAILY_LOSS.toFixed(2)}`);
+    console.log(`  [REAL TRADE] HALTED — daily loss $${state.dailyLoss.toFixed(2)} exceeds limit $${config.maxDailyLossUsd.toFixed(2)}`);
   }
+}
+
+/* ── Settings (can be called at runtime from settings page) ── */
+
+export function applyRealSettings(s) {
+  if (!s || typeof s !== 'object') return;
+  if (s.enabled != null) config.enabled = !!s.enabled;
+  if (s.maxPositionUsd != null) config.maxPositionUsd = Number(s.maxPositionUsd);
+  if (s.maxDailyLossUsd != null) config.maxDailyLossUsd = Number(s.maxDailyLossUsd);
+  if (s.maxOpenOrders != null) config.maxOpenOrders = Number(s.maxOpenOrders);
+  if (s.minConfidence != null) config.minConfidence = Number(s.minConfidence);
+  if (s.martingale && typeof s.martingale === 'object') {
+    if (s.martingale.enabled != null) config.martingale.enabled = !!s.martingale.enabled;
+    if (s.martingale.multiplier != null) config.martingale.multiplier = Number(s.martingale.multiplier);
+    if (s.martingale.maxLevel != null) config.martingale.maxLevel = Number(s.martingale.maxLevel);
+    if (s.martingale.maxPositionUsd != null) config.martingale.maxPositionUsd = Number(s.martingale.maxPositionUsd);
+  }
+  console.log(`  [real] config updated: maxPos=$${config.maxPositionUsd} maxLoss=$${config.maxDailyLossUsd} minConf=${config.minConfidence}% MG=${config.martingale.enabled ? 'ON' : 'OFF'}`);
+}
+
+async function loadConfigFromDb() {
+  try {
+    const dbCfg = await dbGetConfig('real_config');
+    if (dbCfg) {
+      applyRealSettings(dbCfg);
+    }
+  } catch { /* ignore — use env defaults */ }
+}
+
+export function toggleRealMartingale() {
+  config.martingale.enabled = !config.martingale.enabled;
+  if (!config.martingale.enabled && state) state.martingaleLevel = 0;
+  console.log(`  [real] martingale ${config.martingale.enabled ? 'ENABLED' : 'DISABLED'}`);
+  if (state) saveState();
+  return getPublicState();
 }
 
 /* ── Main Tick ───────────────────────────────────────── */
 
 export async function initRealTrader() {
+  await loadConfigFromDb();
   await loadState();
 
-  if (!REAL_ENABLED) {
+  if (!config.enabled) {
     console.log(`  [real] DISABLED (set REAL_TRADING_ENABLED=true in .env to enable)`);
     return;
   }
 
-  // Start CLOB client initialization (async, non-blocking)
   initClobClient().then(ok => {
     if (ok) console.log(`  [real] CLOB client initialized — waiting for UI session confirmation`);
     else console.log(`  [real] CLOB client failed to initialize — real trading unavailable`);
@@ -269,7 +336,6 @@ export async function initRealTrader() {
 
 export async function processRealTick(data) {
   if (!state) {
-    // Synchronous file-based fallback (async init should have been called already)
     try {
       if (fs.existsSync(STATE_FILE)) {
         const raw = fs.readFileSync(STATE_FILE, 'utf8');
@@ -278,16 +344,15 @@ export async function processRealTick(data) {
       } else { state = createDefaultState(); }
     } catch { state = createDefaultState(); }
   }
-  if (!REAL_ENABLED) return getPublicState();
+  if (!config.enabled) return getPublicState();
 
-  // Periodically refresh wallet balance (non-blocking)
   if (isClobReady()) {
     fetchWalletBalance().catch(() => {});
   }
 
-  // ── Auto-clean phantom orders (no orderId = never actually placed) ──
+  // Auto-clean phantom orders
   if (state.currentOrder && !state.currentOrder.orderId) {
-    console.log(`  [real] clearing phantom order (no orderId) — order was never actually placed`);
+    console.log(`  [real] clearing phantom order (no orderId)`);
     state.currentOrder = null;
     saveState();
   }
@@ -311,7 +376,6 @@ export async function processRealTick(data) {
     state.lastPtbDelta = null;
   }
 
-  // Settle at expiry
   if (state.currentOrder && timeLeft != null && timeLeft <= 0.1 && ptbDelta != null && ptbDelta !== 0) {
     const upWon = ptbDelta > 0;
     const outcome = (state.currentOrder.side === 'UP' && upWon) || (state.currentOrder.side === 'DOWN' && !upWon) ? 'WIN' : 'LOSS';
@@ -331,7 +395,7 @@ export async function processRealTick(data) {
 
     if (
       (direction === 'UP' || direction === 'DOWN') &&
-      confidence >= MIN_CONFIDENCE &&
+      confidence >= config.minConfidence &&
       timeLeft != null && timeLeft >= 2 && timeLeft <= 13 &&
       poly.upPrice != null && poly.downPrice != null
     ) {
@@ -365,7 +429,7 @@ function getPublicState() {
 
   const clobStatus = getClobStatus();
   return {
-    enabled: REAL_ENABLED,
+    enabled: config.enabled,
     clobReady: isClobReady(),
     clobStatus,
     walletAddress: clobStatus.walletAddress,
@@ -374,12 +438,20 @@ function getPublicState() {
     sessionConfirmed,
     halted,
     haltReason,
-    status: !REAL_ENABLED ? 'DISABLED' : !isClobReady() ? 'CLOB_ERROR' : !sessionConfirmed ? 'AWAITING_CONFIRM' : halted ? 'HALTED' : 'ACTIVE',
-    minConfidence: MIN_CONFIDENCE,
-    maxPositionUsd: MAX_POS_USD,
-    maxDailyLossUsd: MAX_DAILY_LOSS,
+    status: !config.enabled ? 'DISABLED' : !isClobReady() ? 'CLOB_ERROR' : !sessionConfirmed ? 'AWAITING_CONFIRM' : halted ? 'HALTED' : 'ACTIVE',
+    minConfidence: config.minConfidence,
+    maxPositionUsd: config.maxPositionUsd,
+    maxDailyLossUsd: config.maxDailyLossUsd,
     dailyLoss: state.dailyLoss,
-    dailyLossRemaining: Math.max(0, MAX_DAILY_LOSS - state.dailyLoss),
+    dailyLossRemaining: Math.max(0, config.maxDailyLossUsd - state.dailyLoss),
+    martingale: {
+      enabled: config.martingale.enabled,
+      level: state.martingaleLevel ?? 0,
+      multiplier: config.martingale.multiplier,
+      maxLevel: config.martingale.maxLevel,
+      maxPositionUsd: config.martingale.maxPositionUsd,
+      effectiveMaxSpend: getEffectiveMaxSpend(),
+    },
     currentOrder: state.currentOrder ? {
       side: state.currentOrder.side,
       entryPrice: state.currentOrder.entryPrice,
@@ -388,6 +460,7 @@ function getPublicState() {
       aiConfidence: state.currentOrder.aiConfidence,
       enteredAt: state.currentOrder.enteredAt,
       orderId: state.currentOrder.orderId,
+      martingaleLevel: state.currentOrder.martingaleLevel,
     } : null,
     stats: {
       totalTrades: state.stats.totalTrades,
@@ -405,6 +478,7 @@ function getPublicState() {
       settledAt: t.settledAt,
       cost: t.cost,
       shares: t.shares,
+      martingaleLevel: t.martingaleLevel ?? 0,
     })),
   };
 }
@@ -412,7 +486,7 @@ function getPublicState() {
 /* ── Controls ────────────────────────────────────────── */
 
 export function confirmRealSession() {
-  if (!REAL_ENABLED) return { ok: false, error: 'Real trading not enabled in .env' };
+  if (!config.enabled) return { ok: false, error: 'Real trading not enabled' };
   if (!isClobReady()) return { ok: false, error: 'CLOB client not ready' };
   sessionConfirmed = true;
   console.log(`  [REAL TRADE] Session CONFIRMED — real trading is now ACTIVE`);
@@ -425,7 +499,6 @@ export async function killSwitch() {
   haltReason = 'kill_switch';
   sessionConfirmed = false;
 
-  // Cancel all open orders on Polymarket
   if (isClobReady()) {
     await cancelAllOrders();
   }
@@ -436,7 +509,7 @@ export async function killSwitch() {
 }
 
 export function getRealTraderEnabled() {
-  return REAL_ENABLED;
+  return config.enabled;
 }
 
 export function getRealState() {

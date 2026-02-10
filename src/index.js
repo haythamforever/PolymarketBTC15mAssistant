@@ -37,8 +37,8 @@ import { appendCsvRow, getCandleWindowTiming, sleep } from './utils.js';
 import { startBinanceTradeStream } from './data/binanceWs.js';
 import { applyGlobalProxyFromEnv } from './net/proxy.js';
 import { getAllAiAnalyses, isAiEnabled, forceNextRefresh, setActiveProvider, getActiveProviderId, getProviderInfo, getModelStats } from './engines/aiAnalysis.js';
-import { initPaperTrader, processTick as paperTick, resetPaperTrader, toggleMartingale, getLearningsForAi } from './engines/paperTrader.js';
-import { initRealTrader, processRealTick, confirmRealSession, killSwitch, getRealTraderEnabled, getRealState } from './engines/realTrader.js';
+import { initPaperTrader, processTick as paperTick, resetPaperTrader, toggleMartingale, getLearningsForAi, applyPaperSettings } from './engines/paperTrader.js';
+import { initRealTrader, processRealTick, confirmRealSession, killSwitch, getRealTraderEnabled, getRealState, applyRealSettings, toggleRealMartingale } from './engines/realTrader.js';
 import { getSessionSecret, hasAnyUsers, createUser, authenticateUser } from './auth.js';
 
 /* ── Setup ────────────────────────────────────────────── */
@@ -141,6 +141,9 @@ app.post('/api/settings', async (req, res) => {
     }
     const result = await dbSaveSettings(settings);
     if (result) {
+      // Apply settings to live traders immediately
+      if (settings.paper_config) applyPaperSettings(settings.paper_config);
+      if (settings.real_config) applyRealSettings(settings.real_config);
       res.json({ ok: true });
     } else {
       res.json({ ok: false, error: 'Database not available — cannot save settings' });
@@ -395,6 +398,11 @@ async function main() {
     socket.on('killSwitch', async () => {
       console.log(`  [real] KILL SWITCH by ${socket.id}`);
       const rs = await killSwitch();
+      io.emit('realUpdate', rs);
+    });
+    socket.on('toggleRealMartingale', () => {
+      console.log(`  [real] martingale toggle by ${socket.id}`);
+      const rs = toggleRealMartingale();
       io.emit('realUpdate', rs);
     });
     socket.on('disconnect', () => console.log(`  [ws] client disconnected: ${socket.id}`));
