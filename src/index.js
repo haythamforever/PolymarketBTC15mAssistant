@@ -58,6 +58,13 @@ app.use(express.json());
 
 let sessionMiddleware; // set during startup
 
+// Delegate middleware — registered now in the correct position,
+// but delegates to the real session middleware once it's configured.
+app.use((req, res, next) => {
+  if (sessionMiddleware) return sessionMiddleware(req, res, next);
+  next();
+});
+
 // ── Public routes (no auth) ──
 app.get('/login', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'login.html')));
 
@@ -740,7 +747,7 @@ async function startup() {
     });
   }
   sessionMiddleware = session(sessionOpts);
-  app.use(sessionMiddleware);
+  // Note: app.use() is handled by the delegate middleware registered at startup
   io.engine.use(sessionMiddleware);
 
   // 3. Start server
