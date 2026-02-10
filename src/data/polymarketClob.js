@@ -11,6 +11,7 @@ import { Contract } from '@ethersproject/contracts';
 import { formatUnits } from '@ethersproject/units';
 import fs from 'node:fs';
 import path from 'node:path';
+import { dbInsertClobOrder } from '../db/queries.js';
 
 /* ── Config ──────────────────────────────────────────── */
 
@@ -39,6 +40,10 @@ let balanceLastFetched = 0;
 /* ── Logging ─────────────────────────────────────────── */
 
 function logOrder(entry) {
+  // Insert into DB (fire-and-forget)
+  dbInsertClobOrder(entry).catch(() => {});
+
+  // File-based fallback
   try {
     const dir = './logs';
     fs.mkdirSync(dir, { recursive: true });

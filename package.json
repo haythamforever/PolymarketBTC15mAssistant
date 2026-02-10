@@ -1,6 +1,6 @@
 {
   "name": "polyassistent",
-  "version": "0.6.0",
+  "version": "0.7.0",
   "type": "module",
   "private": true,
   "scripts": {
@@ -8,12 +8,14 @@
   },
   "dependencies": {
     "@polymarket/clob-client": "^5.2.1",
+    "connect-pg-simple": "^10.0.0",
     "dotenv": "^16.4.7",
     "ethers": "^6.11.1",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
     "https-proxy-agent": "^7.0.6",
     "openai": "^6.18.0",
+    "pg": "^8.18.0",
     "socket.io": "^4.8.1",
     "socks-proxy-agent": "^8.0.5",
     "undici": "^6.21.3",

@@ -1,5 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import {
+  dbLoadPaperState, dbSavePaperState,
+  dbGetJournal, dbInsertJournalEntry,
+  dbInsertPaperTrade,
+  dbLoadLearnings, dbSaveLearnings,
+} from '../db/queries.js';
 
 const STATE_FILE  = './logs/paper_trader_state.json';
 const TRADES_CSV  = './logs/paper_trades.csv';
@@ -64,7 +70,28 @@ function createDefaultState() {
   };
 }
 
-function loadState() {
+async function loadState() {
+  // Try DB first
+  try {
+    const dbState = await dbLoadPaperState();
+    if (dbState && dbState !== undefined) {
+      state = {
+        ...createDefaultState(),
+        balance: dbState.balance,
+        currentTrade: dbState.currentTrade,
+        lastSettledSlug: dbState.lastSettledSlug,
+        lastPtbDelta: dbState.lastPtbDelta,
+        martingaleLevel: dbState.martingaleLevel ?? 0,
+        config: deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), dbState.config ?? {}),
+        stats: { ...createDefaultState().stats, ...(dbState.stats ?? {}) },
+        history: [], // history is in paper_trades table
+      };
+      console.log(`  [paper] loaded (DB): $${state.balance.toFixed(2)} | ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
+      return;
+    }
+  } catch (err) { console.error(`  [paper] DB load error, trying file: ${err.message}`); }
+
+  // File-based fallback
   try {
     if (fs.existsSync(STATE_FILE)) {
       const raw = fs.readFileSync(STATE_FILE, 'utf8');
@@ -74,7 +101,7 @@ function loadState() {
         config: deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), loaded.config ?? {}),
         stats: { ...createDefaultState().stats, ...(loaded.stats ?? {}) },
       };
-      console.log(`  [paper] loaded: $${state.balance.toFixed(2)} | ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
+      console.log(`  [paper] loaded (file): $${state.balance.toFixed(2)} | ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
       return;
     }
   } catch (err) { console.error(`  [paper] load error: ${err.message}`); }
@@ -83,17 +110,31 @@ function loadState() {
 }
 
 function saveState() {
+  // Fire-and-forget DB save
+  dbSavePaperState(state).catch(() => {});
+  // File-based fallback (always keep as backup)
   try { ensureDir(STATE_FILE); fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8'); } catch { /* */ }
 }
 
 /* ── Trade Journal ────────────────────────────────────── */
 
-function loadJournal() {
+async function loadJournal() {
+  // Try DB first
+  try {
+    const dbJournal = await dbGetJournal(MAX_JOURNAL);
+    if (dbJournal !== null) {
+      journal = dbJournal;
+      console.log(`  [paper] journal (DB): ${journal.length} entries loaded`);
+      return;
+    }
+  } catch (err) { console.error(`  [paper] DB journal load error: ${err.message}`); }
+
+  // File-based fallback
   try {
     if (fs.existsSync(JOURNAL_FILE)) {
       journal = JSON.parse(fs.readFileSync(JOURNAL_FILE, 'utf8'));
       if (!Array.isArray(journal)) journal = [];
-      console.log(`  [paper] journal: ${journal.length} entries loaded`);
+      console.log(`  [paper] journal (file): ${journal.length} entries loaded`);
       return;
     }
   } catch { /* */ }
@@ -111,6 +152,8 @@ function saveJournal() {
 
 function appendJournalEntry(entry) {
   journal.push(entry);
+  // Insert into DB (fire-and-forget)
+  dbInsertJournalEntry(entry).catch(() => {});
   saveJournal();
 }
 
@@ -129,6 +172,9 @@ function logTradeCsv(trade) {
     trade.entrySnapshot?.signalAgreement?.direction ?? '',
     reasoning
   ].join(',');
+  // Insert into DB (fire-and-forget)
+  dbInsertPaperTrade(trade).catch(() => {});
+  // File-based fallback
   try {
     ensureDir(TRADES_CSV);
     if (!fs.existsSync(TRADES_CSV)) fs.writeFileSync(TRADES_CSV, header + '\n' + row + '\n', 'utf8');
@@ -431,10 +477,22 @@ function computeLearnings() {
 }
 
 function saveLearnings() {
+  // Fire-and-forget DB save
+  if (learnings) dbSaveLearnings(learnings).catch(() => {});
   try { ensureDir(LEARN_FILE); fs.writeFileSync(LEARN_FILE, JSON.stringify(learnings, null, 2), 'utf8'); } catch { /* */ }
 }
 
-function loadLearnings() {
+async function loadLearnings() {
+  // Try DB first
+  try {
+    const dbLearn = await dbLoadLearnings();
+    if (dbLearn !== null && dbLearn !== undefined) {
+      learnings = dbLearn;
+      return;
+    }
+  } catch { /* fall through */ }
+
+  // File-based fallback
   try {
     if (fs.existsSync(LEARN_FILE)) {
       learnings = JSON.parse(fs.readFileSync(LEARN_FILE, 'utf8'));
@@ -641,15 +699,26 @@ function adjustLearning() {
 
 /* ── Main Tick ────────────────────────────────────────── */
 
-export function initPaperTrader() {
-  loadState();
-  loadJournal();
-  loadLearnings();
+export async function initPaperTrader() {
+  await loadState();
+  await loadJournal();
+  await loadLearnings();
   if (journal.length >= 3) computeLearnings();
 }
 
 export function processTick(data) {
-  if (!state) { loadState(); loadJournal(); loadLearnings(); }
+  if (!state) {
+    // Synchronous file-based fallback for lazy init (async init should have been called already)
+    try {
+      if (fs.existsSync(STATE_FILE)) {
+        const raw = fs.readFileSync(STATE_FILE, 'utf8');
+        const loaded = JSON.parse(raw);
+        state = { ...createDefaultState(), ...loaded, config: deepMerge(JSON.parse(JSON.stringify(DEFAULT_CONFIG)), loaded.config ?? {}), stats: { ...createDefaultState().stats, ...(loaded.stats ?? {}) } };
+      } else { state = createDefaultState(); }
+    } catch { state = createDefaultState(); }
+    try { if (fs.existsSync(JOURNAL_FILE)) { journal = JSON.parse(fs.readFileSync(JOURNAL_FILE, 'utf8')); if (!Array.isArray(journal)) journal = []; } } catch { journal = []; }
+    try { if (fs.existsSync(LEARN_FILE)) { learnings = JSON.parse(fs.readFileSync(LEARN_FILE, 'utf8')); } } catch { learnings = null; }
+  }
 
   const { ai, aiAll, poly, timeLeft, priceToBeat, ptbDelta, rec, snapshot } = data;
   const marketSlug = poly?.slug || '';
@@ -857,7 +926,7 @@ export function resetPaperTrader() {
 }
 
 export function toggleMartingale() {
-  if (!state) { loadState(); loadJournal(); loadLearnings(); }
+  if (!state) return getPublicState();
   state.config.martingale.enabled = !state.config.martingale.enabled;
   if (!state.config.martingale.enabled) state.martingaleLevel = 0;
   saveState();

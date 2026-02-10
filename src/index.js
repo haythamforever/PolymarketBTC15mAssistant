@@ -3,11 +3,15 @@ import express from 'express';
 import { createServer } from 'node:http';
 import { Server } from 'socket.io';
 import session from 'express-session';
+import connectPgSimple from 'connect-pg-simple';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import fs from 'node:fs';
 
 import { CONFIG } from './config.js';
+import { initPool, isDbAvailable, getPool } from './db/pool.js';
+import { runMigrations } from './db/migrate.js';
+import { dbInsertSignal, dbGetAllConfig, dbSetConfig, dbGetSettings, dbSaveSettings } from './db/queries.js';
 import { fetchKlines, fetchLastPrice } from './data/binance.js';
 import { fetchChainlinkBtcUsd } from './data/chainlink.js';
 import { startChainlinkPriceStream } from './data/chainlinkWs.js';
@@ -49,23 +53,17 @@ const io = new Server(server, { cors: { origin: '*' } });
 
 const PORT = process.env.PORT || 3000;
 
-/* ── Session & Auth ───────────────────────────────────── */
+/* ── Session & Auth (configured after DB init) ─────────── */
 app.use(express.json());
 
-const sessionMiddleware = session({
-  secret: getSessionSecret(),
-  resave: false,
-  saveUninitialized: false,
-  cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' },
-});
-app.use(sessionMiddleware);
-io.engine.use(sessionMiddleware);
+let sessionMiddleware; // set during startup
 
 // ── Public routes (no auth) ──
 app.get('/login', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'login.html')));
 
-app.get('/api/status', (req, res) => {
-  res.json({ needsSetup: !hasAnyUsers(), loggedIn: !!req.session?.user, user: req.session?.user?.username ?? null });
+app.get('/api/status', async (req, res) => {
+  const hasUsers = await hasAnyUsers();
+  res.json({ needsSetup: !hasUsers, loggedIn: !!req.session?.user, user: req.session?.user?.username ?? null });
 });
 
 app.post('/api/login', async (req, res) => {
@@ -85,7 +83,7 @@ app.post('/api/login', async (req, res) => {
 
 app.post('/api/setup', async (req, res) => {
   try {
-    if (hasAnyUsers()) return res.json({ ok: false, error: 'Admin account already exists' });
+    if (await hasAnyUsers()) return res.json({ ok: false, error: 'Admin account already exists' });
     const { username, password, confirm } = req.body || {};
     if (!username || !password) return res.json({ ok: false, error: 'Username and password required' });
     if (password.length < 4) return res.json({ ok: false, error: 'Password must be at least 4 characters' });
@@ -111,6 +109,43 @@ app.use((req, res, next) => {
 // ── Protected routes ──
 app.get('/trades', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'trades.html')));
 app.get('/models', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'models.html')));
+app.get('/settings', (_req, res) => res.sendFile(path.join(__dirname, '..', 'public', 'settings.html')));
+
+// ── Settings API ──
+app.get('/api/settings', async (_req, res) => {
+  try {
+    const dbConfig = await dbGetAllConfig();
+    if (dbConfig) {
+      res.json({ ok: true, settings: dbConfig });
+    } else {
+      // No DB — return env-based defaults
+      res.json({ ok: true, settings: {}, message: 'No database configured — settings are read-only from .env' });
+    }
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+app.post('/api/settings', async (req, res) => {
+  try {
+    const { settings } = req.body || {};
+    if (!settings || typeof settings !== 'object') {
+      return res.json({ ok: false, error: 'Settings object required' });
+    }
+    const result = await dbSaveSettings(settings);
+    if (result) {
+      res.json({ ok: true });
+    } else {
+      res.json({ ok: false, error: 'Database not available — cannot save settings' });
+    }
+  } catch (err) {
+    res.json({ ok: false, error: err.message });
+  }
+});
+
+app.get('/api/db-status', (_req, res) => {
+  res.json({ available: isDbAvailable() });
+});
 
 // ── Protected static files ──
 app.use(express.static(path.join(__dirname, '..', 'public')));
@@ -295,8 +330,8 @@ async function fetchPolymarketSnapshot() {
 const dumpedMarkets = new Set();
 
 async function main() {
-  initPaperTrader();
-  initRealTrader();
+  await initPaperTrader();
+  await initRealTrader();
 
   const binanceStream = startBinanceTradeStream({ symbol: CONFIG.symbol });
   const polymarketLiveStream = startPolymarketChainlinkPriceStream({});
@@ -651,8 +686,20 @@ async function main() {
       prevSpotPrice = spotPrice ?? prevSpotPrice;
       prevCurrentPrice = currentPrice ?? prevCurrentPrice;
 
-      // CSV logging
+      // Signal logging (DB + CSV)
       const signal = rec.action === 'ENTER' ? (rec.side === 'UP' ? 'BUY UP' : 'BUY DOWN') : 'NO TRADE';
+      dbInsertSignal({
+        regime: regimeInfo.regime,
+        signal,
+        modelUp: timeAware.adjustedUp,
+        modelDown: timeAware.adjustedDown,
+        mktUp: marketUp,
+        mktDown: marketDown,
+        edgeUp: edge.edgeUp,
+        edgeDown: edge.edgeDown,
+        recommendation: rec.action === 'ENTER' ? `${rec.side}:${rec.phase}:${rec.strength}` : 'NO_TRADE',
+        timeLeftMin,
+      }).catch(() => {});
       appendCsvRow('./logs/signals.csv', csvHeader, [
         new Date().toISOString(), timing.elapsedMinutes.toFixed(3), timeLeftMin.toFixed(3),
         regimeInfo.regime, signal, timeAware.adjustedUp, timeAware.adjustedDown,
@@ -669,27 +716,61 @@ async function main() {
 
 /* ── Start Server ─────────────────────────────────────── */
 
-server.listen(PORT, () => {
-  const providers = getProviderInfo();
-  const aiLines = providers.map(p => `${p.active ? '*' : ' '} ${p.name} (${p.model})`);
-  const aiStatus = providers.length > 0 ? `ON (${providers.length} models)` : 'OFF (no keys)';
-  const authStatus = hasAnyUsers() ? 'ON (users exist)' : 'SETUP NEEDED';
-  console.log('');
-  console.log('  ╔══════════════════════════════════════╗');
-  console.log('  ║  Polymarket BTC 15m Assistant  v0.6  ║');
-  console.log('  ╠══════════════════════════════════════╣');
-  console.log(`  ║  Dashboard: http://localhost:${PORT}     ║`);
-  console.log(`  ║  AI Analysis: ${aiStatus.padEnd(21)}║`);
-  for (const line of aiLines) {
-    console.log(`  ║    ${line.padEnd(32)}║`);
+async function startup() {
+  // 1. Initialize database (if DATABASE_URL is set)
+  await initPool();
+  if (isDbAvailable()) {
+    await runMigrations();
   }
-  console.log('  ║  Paper Trader: ON ($100 initial)     ║');
-  const realStatus = getRealTraderEnabled() ? 'ON (needs confirm)' : 'OFF';
-  console.log(`  ║  Real Trading: ${realStatus.padEnd(21)}║`);
-  console.log('  ║  Background Agent: ACTIVE            ║');
-  console.log(`  ║  Auth: ${authStatus.padEnd(29)}║`);
-  console.log('  ╚══════════════════════════════════════╝');
-  console.log('');
-});
 
-main();
+  // 2. Configure session middleware (needs DB for store + async secret)
+  const PgSession = connectPgSimple(session);
+  const secret = await getSessionSecret();
+  const sessionOpts = {
+    secret,
+    resave: false,
+    saveUninitialized: false,
+    cookie: { maxAge: 24 * 60 * 60 * 1000, httpOnly: true, sameSite: 'lax' },
+  };
+  if (isDbAvailable()) {
+    sessionOpts.store = new PgSession({
+      pool: getPool(),
+      tableName: 'session',
+      createTableIfMissing: false, // already created in migrations
+    });
+  }
+  sessionMiddleware = session(sessionOpts);
+  app.use(sessionMiddleware);
+  io.engine.use(sessionMiddleware);
+
+  // 3. Start server
+  server.listen(PORT, async () => {
+    const providers = getProviderInfo();
+    const aiLines = providers.map(p => `${p.active ? '*' : ' '} ${p.name} (${p.model})`);
+    const aiStatus = providers.length > 0 ? `ON (${providers.length} models)` : 'OFF (no keys)';
+    const authStatus = (await hasAnyUsers()) ? 'ON (users exist)' : 'SETUP NEEDED';
+    const dbStatus = isDbAvailable() ? 'PostgreSQL' : 'File-based';
+    console.log('');
+    console.log('  ╔══════════════════════════════════════╗');
+    console.log('  ║  Polymarket BTC 15m Assistant  v0.7  ║');
+    console.log('  ╠══════════════════════════════════════╣');
+    console.log(`  ║  Dashboard: http://localhost:${PORT}     ║`);
+    console.log(`  ║  AI Analysis: ${aiStatus.padEnd(21)}║`);
+    for (const line of aiLines) {
+      console.log(`  ║    ${line.padEnd(32)}║`);
+    }
+    console.log('  ║  Paper Trader: ON ($100 initial)     ║');
+    const realStatus = getRealTraderEnabled() ? 'ON (needs confirm)' : 'OFF';
+    console.log(`  ║  Real Trading: ${realStatus.padEnd(21)}║`);
+    console.log(`  ║  Storage: ${dbStatus.padEnd(26)}║`);
+    console.log('  ║  Background Agent: ACTIVE            ║');
+    console.log(`  ║  Auth: ${authStatus.padEnd(29)}║`);
+    console.log('  ╚══════════════════════════════════════╝');
+    console.log('');
+  });
+
+  // 4. Start main trading loop
+  main();
+}
+
+startup();

@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings — BTC 15m Assistant</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg: #f0f2f5; --bg-card: #ffffff; --bg-card2: #f7f8fa; --border: #e0e3e8;
+      --text: #1a1d23; --text-dim: #5a6070; --text-mute: #9ca3b0;
+      --green: #0d9f6e; --green-bg: rgba(13,159,110,0.08);
+      --red: #dc2c42; --red-bg: rgba(220,44,66,0.08);
+      --amber: #d97706; --amber-bg: rgba(217,119,6,0.08);
+      --purple: #7c3aed; --purple-bg: rgba(124,58,237,0.08);
+      --blue: #2563eb; --radius: 12px;
+    }
+    html, body { min-height: 100%; background: var(--bg); color: var(--text); font-family: 'Inter', sans-serif; font-size: 13px; line-height: 1.5; }
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .page-header {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px 24px; border-bottom: 1px solid var(--border); background: var(--bg-card);
+      box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+    }
+    .page-header h1 { font-size: 17px; font-weight: 800; }
+    .nav-links { display: flex; gap: 8px; }
+    .nav-link {
+      font-size: 11px; color: var(--purple); text-decoration: none; padding: 5px 14px;
+      border: 1px solid rgba(124,58,237,0.3); border-radius: 6px; font-weight: 600; transition: all 0.2s;
+    }
+    .nav-link:hover { background: var(--purple-bg); border-color: var(--purple); }
+
+    .container { max-width: 900px; margin: 0 auto; padding: 20px 24px; }
+
+    .card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 20px; margin-bottom: 20px; box-shadow: 0 1px 4px rgba(0,0,0,0.05);
+    }
+    .card-title {
+      font-size: 15px; font-weight: 800; margin-bottom: 16px; display: flex; align-items: center; gap: 8px;
+    }
+    .card-title .icon { font-size: 16px; }
+
+    .db-badge {
+      display: inline-block; padding: 2px 10px; border-radius: 5px;
+      font-size: 10px; font-weight: 700; letter-spacing: 0.3px;
+    }
+    .db-badge.online { background: var(--green-bg); color: var(--green); }
+    .db-badge.offline { background: var(--red-bg); color: var(--red); }
+
+    /* ── Form ── */
+    .form-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px 20px;
+    }
+    .form-group { display: flex; flex-direction: column; gap: 4px; }
+    .form-group.full { grid-column: 1 / -1; }
+    .form-label {
+      font-size: 11px; font-weight: 700; text-transform: uppercase;
+      letter-spacing: 0.5px; color: var(--text-dim);
+    }
+    .form-hint { font-size: 10px; color: var(--text-mute); margin-top: 1px; }
+    .form-input {
+      padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px;
+      font-family: 'JetBrains Mono', monospace; font-size: 13px; font-weight: 500;
+      background: var(--bg); color: var(--text); outline: none; transition: border-color 0.2s;
+    }
+    .form-input:focus { border-color: var(--purple); box-shadow: 0 0 0 3px rgba(124,58,237,0.1); }
+    .form-input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--purple); }
+    .form-toggle { display: flex; align-items: center; gap: 10px; }
+
+    select.form-input {
+      appearance: none; -webkit-appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M3 4.5l3 3 3-3' fill='none' stroke='%239ca3b0' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+      background-repeat: no-repeat; background-position: right 10px center; padding-right: 30px;
+    }
+
+    .btn-row { display: flex; gap: 10px; margin-top: 16px; }
+    .btn {
+      padding: 8px 24px; border: none; border-radius: 8px; font-size: 12px; font-weight: 700;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .btn-primary { background: var(--purple); color: #fff; }
+    .btn-primary:hover { background: #6d28d9; }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-secondary { background: var(--bg); color: var(--text-dim); border: 1px solid var(--border); }
+    .btn-secondary:hover { background: var(--bg-card2); }
+    .btn-danger { background: var(--red); color: #fff; }
+    .btn-danger:hover { background: #b91c33; }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px; padding: 12px 24px;
+      border-radius: 8px; font-size: 12px; font-weight: 600;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.15); z-index: 1000;
+      transform: translateY(80px); opacity: 0; transition: all 0.3s;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { background: var(--green); color: #fff; }
+    .toast.error { background: var(--red); color: #fff; }
+
+    .section-divider { border: none; border-top: 1px solid var(--border); margin: 20px 0; }
+
+    .no-db-msg {
+      text-align: center; padding: 40px; color: var(--text-mute); font-size: 14px;
+    }
+    .no-db-msg strong { color: var(--text-dim); }
+
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .container { padding: 12px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="page-header">
+    <h1>Settings</h1>
+    <nav class="nav-links">
+      <a href="/" class="nav-link">Dashboard</a>
+      <a href="/models" class="nav-link">AI Models</a>
+      <a href="/trades" class="nav-link">Trades &amp; Learning</a>
+      <a href="/api/logout" class="nav-link" style="color:var(--red);border-color:rgba(220,44,66,0.3)">Logout</a>
+    </nav>
+  </header>
+
+  <div class="container">
+
+    <!-- DB Status -->
+    <div class="card" style="display:flex;align-items:center;justify-content:space-between">
+      <div>
+        <span style="font-weight:800;font-size:14px;">Database Storage</span>
+        <span class="db-badge offline" id="dbBadge" style="margin-left:10px">Checking...</span>
+      </div>
+      <div style="font-size:11px;color:var(--text-mute)" id="dbHint">--</div>
+    </div>
+
+    <!-- Paper Trader Config -->
+    <div class="card">
+      <div class="card-title"><span class="icon">&#128200;</span> Paper Trader</div>
+      <div class="form-grid" id="paperForm">
+        <div class="form-group">
+          <label class="form-label">Initial Balance ($)</label>
+          <input class="form-input mono" type="number" id="paper_initialBalance" step="1" value="100">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Position Size (%)</label>
+          <input class="form-input mono" type="number" id="paper_positionSizePct" step="0.1" value="3">
+          <div class="form-hint">Max % of balance per trade</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Min AI Confidence</label>
+          <input class="form-input mono" type="number" id="paper_minAiConfidence" step="1" value="72">
+          <div class="form-hint">Minimum % confidence to enter</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Drawdown Halt (%)</label>
+          <input class="form-input mono" type="number" id="paper_maxDrawdownHalt" step="1" value="15">
+          <div class="form-hint">Stop trading if drawdown exceeds this</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Min Entry Time (min)</label>
+          <input class="form-input mono" type="number" id="paper_minEntryTimeLeft" step="0.5" value="2">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Entry Time (min)</label>
+          <input class="form-input mono" type="number" id="paper_maxEntryTimeLeft" step="0.5" value="13">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Learning Window</label>
+          <input class="form-input mono" type="number" id="paper_learningWindow" step="1" value="20">
+          <div class="form-hint">Number of recent trades for adaptive tuning</div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale</label>
+          <div class="form-toggle">
+            <input type="checkbox" id="paper_martingaleEnabled" class="form-input">
+            <span style="font-size:11px;color:var(--text-dim)">Enable martingale position scaling</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Multiplier</label>
+          <input class="form-input mono" type="number" id="paper_martingaleMultiplier" step="0.1" value="1.5">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Max Level</label>
+          <input class="form-input mono" type="number" id="paper_martingaleMaxLevel" step="1" value="3">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Martingale Max Position (%)</label>
+          <input class="form-input mono" type="number" id="paper_martingaleMaxPositionPct" step="1" value="10">
+        </div>
+      </div>
+    </div>
+
+    <!-- Real Trader Config -->
+    <div class="card" style="border-left:3px solid var(--red)">
+      <div class="card-title"><span class="icon">&#128176;</span> Real Trader</div>
+      <div class="form-grid" id="realForm">
+        <div class="form-group">
+          <label class="form-label">Enabled</label>
+          <div class="form-toggle">
+            <input type="checkbox" id="real_enabled" class="form-input">
+            <span style="font-size:11px;color:var(--red);font-weight:600">DANGER: Real money trades</span>
+          </div>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Position ($)</label>
+          <input class="form-input mono" type="number" id="real_maxPositionUsd" step="0.5" value="5.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Daily Loss ($)</label>
+          <input class="form-input mono" type="number" id="real_maxDailyLossUsd" step="1" value="10.00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Max Open Orders</label>
+          <input class="form-input mono" type="number" id="real_maxOpenOrders" step="1" value="1">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Min AI Confidence (%)</label>
+          <input class="form-input mono" type="number" id="real_minConfidence" step="1" value="80">
+        </div>
+      </div>
+    </div>
+
+    <!-- AI Config -->
+    <div class="card">
+      <div class="card-title"><span class="icon">&#129302;</span> AI Analysis</div>
+      <div class="form-grid" id="aiForm">
+        <div class="form-group">
+          <label class="form-label">Primary Provider</label>
+          <select class="form-input" id="ai_primaryProvider">
+            <option value="deepseek">DeepSeek</option>
+            <option value="openai">OpenAI</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Refresh Interval (sec)</label>
+          <input class="form-input mono" type="number" id="ai_refreshInterval" step="5" value="60">
+          <div class="form-hint">How often to re-query AI models</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- General Config -->
+    <div class="card">
+      <div class="card-title"><span class="icon">&#9881;</span> General</div>
+      <div class="form-grid" id="generalForm">
+        <div class="form-group">
+          <label class="form-label">Poll Interval (ms)</label>
+          <input class="form-input mono" type="number" id="general_pollIntervalMs" step="1000" value="10000">
+          <div class="form-hint">Main loop polling frequency</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="saveBtn" onclick="saveSettings()">Save Settings</button>
+      <button class="btn btn-secondary" onclick="loadSettings()">Reset to Saved</button>
+    </div>
+
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+    // ── Toast ──
+    function showToast(msg, type) {
+      var t = document.getElementById('toast');
+      t.textContent = msg;
+      t.className = 'toast ' + type + ' show';
+      setTimeout(function() { t.className = 'toast'; }, 3000);
+    }
+
+    // ── DB Status ──
+    fetch('/api/db-status').then(function(r) { return r.json(); }).then(function(d) {
+      var badge = document.getElementById('dbBadge');
+      var hint = document.getElementById('dbHint');
+      if (d.available) {
+        badge.textContent = 'PostgreSQL Connected';
+        badge.className = 'db-badge online';
+        hint.textContent = 'Settings are saved to the database and persist across restarts.';
+      } else {
+        badge.textContent = 'File-Based (No DB)';
+        badge.className = 'db-badge offline';
+        hint.textContent = 'Set DATABASE_URL to enable PostgreSQL storage. Settings saved here require DB.';
+        document.getElementById('saveBtn').disabled = true;
+      }
+    }).catch(function() {
+      document.getElementById('dbBadge').textContent = 'Unknown';
+    });
+
+    // ── Load Settings ──
+    function loadSettings() {
+      fetch('/api/settings').then(function(r) { return r.json(); }).then(function(d) {
+        if (!d.ok) return;
+        var s = d.settings || {};
+
+        // Paper trader
+        var p = s.paper_config || {};
+        if (p.initialBalance != null) document.getElementById('paper_initialBalance').value = p.initialBalance;
+        if (p.positionSizePct != null) document.getElementById('paper_positionSizePct').value = (p.positionSizePct * 100);
+        if (p.minAiConfidence != null) document.getElementById('paper_minAiConfidence').value = p.minAiConfidence;
+        if (p.maxDrawdownHalt != null) document.getElementById('paper_maxDrawdownHalt').value = (p.maxDrawdownHalt * 100);
+        if (p.minEntryTimeLeft != null) document.getElementById('paper_minEntryTimeLeft').value = p.minEntryTimeLeft;
+        if (p.maxEntryTimeLeft != null) document.getElementById('paper_maxEntryTimeLeft').value = p.maxEntryTimeLeft;
+        if (p.learningWindow != null) document.getElementById('paper_learningWindow').value = p.learningWindow;
+        if (p.martingale) {
+          if (p.martingale.enabled != null) document.getElementById('paper_martingaleEnabled').checked = p.martingale.enabled;
+          if (p.martingale.multiplier != null) document.getElementById('paper_martingaleMultiplier').value = p.martingale.multiplier;
+          if (p.martingale.maxLevel != null) document.getElementById('paper_martingaleMaxLevel').value = p.martingale.maxLevel;
+          if (p.martingale.maxPositionPct != null) document.getElementById('paper_martingaleMaxPositionPct').value = (p.martingale.maxPositionPct * 100);
+        }
+
+        // Real trader
+        var r2 = s.real_config || {};
+        if (r2.enabled != null) document.getElementById('real_enabled').checked = r2.enabled;
+        if (r2.maxPositionUsd != null) document.getElementById('real_maxPositionUsd').value = r2.maxPositionUsd;
+        if (r2.maxDailyLossUsd != null) document.getElementById('real_maxDailyLossUsd').value = r2.maxDailyLossUsd;
+        if (r2.maxOpenOrders != null) document.getElementById('real_maxOpenOrders').value = r2.maxOpenOrders;
+        if (r2.minConfidence != null) document.getElementById('real_minConfidence').value = r2.minConfidence;
+
+        // AI
+        var a = s.ai_config || {};
+        if (a.primaryProvider) document.getElementById('ai_primaryProvider').value = a.primaryProvider;
+        if (a.refreshInterval != null) document.getElementById('ai_refreshInterval').value = a.refreshInterval;
+
+        // General
+        var g = s.general_config || {};
+        if (g.pollIntervalMs != null) document.getElementById('general_pollIntervalMs').value = g.pollIntervalMs;
+      });
+    }
+    loadSettings();
+
+    // ── Save Settings ──
+    function saveSettings() {
+      var settings = {
+        paper_config: {
+          initialBalance: parseFloat(document.getElementById('paper_initialBalance').value),
+          positionSizePct: parseFloat(document.getElementById('paper_positionSizePct').value) / 100,
+          minAiConfidence: parseInt(document.getElementById('paper_minAiConfidence').value),
+          maxDrawdownHalt: parseFloat(document.getElementById('paper_maxDrawdownHalt').value) / 100,
+          minEntryTimeLeft: parseFloat(document.getElementById('paper_minEntryTimeLeft').value),
+          maxEntryTimeLeft: parseFloat(document.getElementById('paper_maxEntryTimeLeft').value),
+          learningWindow: parseInt(document.getElementById('paper_learningWindow').value),
+          martingale: {
+            enabled: document.getElementById('paper_martingaleEnabled').checked,
+            multiplier: parseFloat(document.getElementById('paper_martingaleMultiplier').value),
+            maxLevel: parseInt(document.getElementById('paper_martingaleMaxLevel').value),
+            maxPositionPct: parseFloat(document.getElementById('paper_martingaleMaxPositionPct').value) / 100,
+          }
+        },
+        real_config: {
+          enabled: document.getElementById('real_enabled').checked,
+          maxPositionUsd: parseFloat(document.getElementById('real_maxPositionUsd').value),
+          maxDailyLossUsd: parseFloat(document.getElementById('real_maxDailyLossUsd').value),
+          maxOpenOrders: parseInt(document.getElementById('real_maxOpenOrders').value),
+          minConfidence: parseInt(document.getElementById('real_minConfidence').value),
+        },
+        ai_config: {
+          primaryProvider: document.getElementById('ai_primaryProvider').value,
+          refreshInterval: parseInt(document.getElementById('ai_refreshInterval').value),
+        },
+        general_config: {
+          pollIntervalMs: parseInt(document.getElementById('general_pollIntervalMs').value),
+        }
+      };
+
+      fetch('/api/settings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ settings: settings })
+      }).then(function(r) { return r.json(); }).then(function(d) {
+        if (d.ok) {
+          showToast('Settings saved successfully', 'success');
+        } else {
+          showToast('Error: ' + (d.error || 'Unknown'), 'error');
+        }
+      }).catch(function(err) {
+        showToast('Network error: ' + err.message, 'error');
+      });
+    }
+  </script>
+</body>
+</html>

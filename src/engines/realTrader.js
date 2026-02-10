@@ -15,6 +15,7 @@ import {
   getOpenOrders,
   fetchWalletBalance,
 } from '../data/polymarketClob.js';
+import { dbLoadRealState, dbSaveRealState, dbInsertRealTrade } from '../db/queries.js';
 
 /* ── Config ──────────────────────────────────────────── */
 
@@ -57,13 +58,33 @@ function createDefaultState() {
   };
 }
 
-function loadState() {
+async function loadState() {
+  // Try DB first
+  try {
+    const dbState = await dbLoadRealState();
+    if (dbState && dbState !== undefined) {
+      state = {
+        ...createDefaultState(),
+        currentOrder: dbState.currentOrder,
+        lastSettledSlug: dbState.lastSettledSlug,
+        lastPtbDelta: dbState.lastPtbDelta,
+        dailyLoss: dbState.dailyLoss ?? 0,
+        dailyLossDate: dbState.dailyLossDate ?? new Date().toISOString().slice(0, 10),
+        stats: { ...createDefaultState().stats, ...(dbState.stats ?? {}) },
+        history: [], // history is in real_trades table
+      };
+      console.log(`  [real] loaded (DB): ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
+      return;
+    }
+  } catch (err) { console.error(`  [real] DB load error, trying file: ${err.message}`); }
+
+  // File-based fallback
   try {
     if (fs.existsSync(STATE_FILE)) {
       const raw = fs.readFileSync(STATE_FILE, 'utf8');
       const loaded = JSON.parse(raw);
       state = { ...createDefaultState(), ...loaded, stats: { ...createDefaultState().stats, ...(loaded.stats ?? {}) } };
-      console.log(`  [real] loaded: ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
+      console.log(`  [real] loaded (file): ${state.stats.totalTrades} trades | W${state.stats.wins}/L${state.stats.losses}`);
       return;
     }
   } catch (err) { console.error(`  [real] load error: ${err.message}`); }
@@ -72,12 +93,18 @@ function loadState() {
 }
 
 function saveState() {
+  // Fire-and-forget DB save
+  dbSaveRealState(state).catch(() => {});
+  // File-based fallback
   try { ensureDir(STATE_FILE); fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2), 'utf8'); } catch { /* */ }
 }
 
 /* ── CSV Log ─────────────────────────────────────────── */
 
 function logTradeCsv(trade) {
+  // Insert into DB (fire-and-forget)
+  dbInsertRealTrade(trade).catch(() => {});
+
   const header = 'timestamp,side,entry_price,shares,cost,outcome,pnl,ai_confidence,time_left,reasoning';
   const reasoning = String(trade.aiReasoning || '').replace(/,/g, ';').replace(/\n/g, ' ').slice(0, 200);
   const row = [
@@ -223,8 +250,8 @@ function settleTrade(outcome) {
 
 /* ── Main Tick ───────────────────────────────────────── */
 
-export function initRealTrader() {
-  loadState();
+export async function initRealTrader() {
+  await loadState();
 
   if (!REAL_ENABLED) {
     console.log(`  [real] DISABLED (set REAL_TRADING_ENABLED=true in .env to enable)`);
@@ -241,7 +268,16 @@ export function initRealTrader() {
 }
 
 export async function processRealTick(data) {
-  if (!state) loadState();
+  if (!state) {
+    // Synchronous file-based fallback (async init should have been called already)
+    try {
+      if (fs.existsSync(STATE_FILE)) {
+        const raw = fs.readFileSync(STATE_FILE, 'utf8');
+        const loaded = JSON.parse(raw);
+        state = { ...createDefaultState(), ...loaded, stats: { ...createDefaultState().stats, ...(loaded.stats ?? {}) } };
+      } else { state = createDefaultState(); }
+    } catch { state = createDefaultState(); }
+  }
   if (!REAL_ENABLED) return getPublicState();
 
   // Periodically refresh wallet balance (non-blocking)

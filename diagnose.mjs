@@ -122,24 +122,51 @@ if (FUNDER_ADDRESS && FUNDER_ADDRESS !== signerAddress) {
   }
 }
 
-// ── Step 8: Try a dry-run order creation (create but DON'T post)
-console.log('\n8. Dry-Run Order Creation');
+// ── Step 8: Test order posting with each signature type
+console.log('\n8. Testing Order Posting (sigType variants)');
+console.log('   Fetching a live market token ID...');
+
+let liveTokenId = null;
 try {
-  // Use a dummy token ID — we're just testing if the signing works
-  // We'll use createOrder (creates but doesn't post) to avoid spending money
-  const dummyTokenId = '71321045679252212594626385532706912750332728571942532289631379312455583992563';
-  const order = await client.createOrder({
-    tokenID: dummyTokenId,
-    price: 0.01,
-    size: 1,
-    side: Side.BUY,
-  }, { tickSize: '0.01', negRisk: false });
-  console.log('   ✅ Order creation (local signing) works');
-  console.log('   Order signature type:', order?.signatureType ?? 'unknown');
-  console.log('   Order maker:', order?.maker ?? 'unknown');
-  console.log('   Order signer:', order?.signer ?? 'unknown');
-} catch (e) {
-  console.log('   ❌ Order creation failed:', e.message);
+  const resp = await fetch('https://gamma-api.polymarket.com/events?series_id=10192&limit=5&active=true');
+  const events = await resp.json();
+  for (const ev of events) {
+    const mkts = ev.markets || [];
+    for (const m of mkts) {
+      const tids = typeof m.clobTokenIds === 'string' ? JSON.parse(m.clobTokenIds) : m.clobTokenIds;
+      if (tids && tids[0]) { liveTokenId = tids[0]; break; }
+    }
+    if (liveTokenId) break;
+  }
+} catch (e) { console.log('   Could not fetch live market:', e.message); }
+
+if (!liveTokenId) {
+  console.log('   ❌ No live token found — skipping order test');
+} else {
+  console.log(`   Token: ${liveTokenId.slice(0, 16)}...`);
+  console.log('   Testing with price=0.01 size=1 (penny order, $0.01 cost)');
+  
+  for (const testSigType of [0, 1, 2]) {
+    const testFunder = FUNDER_ADDRESS || signerAddress;
+    try {
+      const testClient = new ClobClient(CLOB_HOST, CHAIN_ID, signer, apiCreds, testSigType, testFunder);
+      const resp = await testClient.createAndPostOrder(
+        { tokenID: liveTokenId, price: 0.01, size: 1, side: Side.BUY },
+        { tickSize: '0.01', negRisk: false },
+        OrderType.GTC
+      );
+      const oid = resp?.orderID || resp?.id || null;
+      if (oid) {
+        console.log(`   sigType=${testSigType}: ✅ ORDER PLACED (${oid}) — THIS IS THE CORRECT SIGNATURE TYPE`);
+        // Cancel it immediately
+        try { await testClient.cancelOrder(oid); console.log(`   (cancelled)`); } catch {}
+      } else {
+        console.log(`   sigType=${testSigType}: ❌ No orderID returned (rejected)`);
+      }
+    } catch (e) {
+      console.log(`   sigType=${testSigType}: ❌ ${(e.message || String(e)).slice(0, 100)}`);
+    }
+  }
 }
 
 console.log('\n═══════════════════════════════════════');
